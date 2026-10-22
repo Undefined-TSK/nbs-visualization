@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBS 可视化视频生成器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(180deg, #87ceeb 0%, #b0e0e6 60%, #8fbc8f 100%);
+    min-height: 100vh;
+    color: #2c3e50;
+    overflow-x: hidden;
+  }
+
+  /* Minecraft-style pixel font */
+  @font-face {
+    font-family: 'Minecraft';
+    src: local('Consolas'), local('Courier New');
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  .header h1 {
+    font-size: 2.4em;
+    color: #2c3e50;
+    text-shadow: 2px 2px 0 #fff, 4px 4px 0 rgba(0,0,0,.1);
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  .header p {
+    color: #34495e;
+    font-size: 1.05em;
+  }
+
+  .card {
+    background: #f5e6c8;
+    border: 4px solid #5a3a1b;
+    box-shadow: 0 4px 0 #5a3a1b, 0 8px 16px rgba(0,0,0,.2);
+    border-radius: 4px;
+    padding: 30px;
+    margin-bottom: 24px;
+    position: relative;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border: 1px solid rgba(90,58,27,.3);
+    pointer-events: none;
+  }
+
+  /* Drop zone */
+  .dropzone {
+    border: 3px dashed #8b6f3a;
+    border-radius: 4px;
+    padding: 50px 20px;
+    text-align: center;
+    background: rgba(255,255,255,.3);
+    transition: all .2s;
+    cursor: pointer;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    background: rgba(139, 207, 100, .4);
+    border-color: #4a7c2a;
+  }
+  .dropzone .icon {
+    font-size: 3em;
+    margin-bottom: 12px;
+  }
+  .dropzone .text {
+    color: #5a3a1b;
+    font-size: 1.15em;
+    font-weight: 600;
+  }
+  .dropzone .subtext {
+    color: #8b6f3a;
+    font-size: .9em;
+    margin-top: 6px;
+  }
+  .dropzone input[type="file"] { display: none; }
+
+  .btn {
+    background: #6ab04c;
+    color: #fff;
+    border: 2px solid #2d5016;
+    box-shadow: 0 3px 0 #2d5016;
+    padding: 12px 28px;
+    font-size: 1.05em;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all .1s;
+    letter-spacing: .5px;
+    font-family: inherit;
+  }
+  .btn:hover { background: #7bc55d; }
+  .btn:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #2d5016;
+  }
+  .btn:disabled {
+    background: #95a5a6;
+    border-color: #5d6d7e;
+    box-shadow: 0 3px 0 #5d6d7e;
+    cursor: not-allowed;
+    opacity: .7;
+  }
+  .btn-secondary {
+    background: #3498db;
+    border-color: #1f5f8b;
+    box-shadow: 0 3px 0 #1f5f8b;
+  }
+  .btn-secondary:hover { background: #4aa8e0; }
+  .btn-download {
+    background: #e67e22;
+    border-color: #a04000;
+    box-shadow: 0 3px 0 #a04000;
+  }
+  .btn-download:hover { background: #f39c12; }
+
+  /* Progress */
+  .progress-area {
+    margin-top: 20px;
+    display: none;
+  }
+  .progress-area.active { display: block; }
+  .progress-bar-outer {
+    background: #5a3a1b;
+    border: 2px solid #3a2410;
+    height: 24px;
+    padding: 2px;
+    border-radius: 2px;
+    margin: 16px 0 8px;
+  }
+  .progress-bar-inner {
+    background: linear-gradient(180deg, #7bc55d 0%, #6ab04c 50%, #4a8c2c 100%);
+    height: 100%;
+    width: 0%;
+    transition: width .3s;
+    position: relative;
+  }
+  .progress-bar-inner::after {
+    content: '';
+    position: absolute;
+    inset: 2px 2px auto 2px;
+    height: 4px;
+    background: rgba(255,255,255,.3);
+  }
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: .9em;
+    color: #5a3a1b;
+  }
+  .progress-status {
+    font-weight: 600;
+  }
+  .progress-percent {
+    font-weight: 700;
+    color: #2d5016;
+  }
+
+  /* Result */
+  .result-area {
+    display: none;
+  }
+  .result-area.active { display: block; }
+  .result-area video {
+    width: 100%;
+    max-height: 480px;
+    background: #000;
+    border: 3px solid #5a3a1b;
+    box-shadow: 0 3px 0 #5a3a1b;
+    border-radius: 4px;
+  }
+  .result-info {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: rgba(255,255,255,.4);
+    border-left: 4px solid #6ab04c;
+    font-size: .95em;
+    color: #2c3e50;
+  }
+  .result-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  /* Error */
+  .error-msg {
+    background: #ffcccc;
+    color: #c0392b;
+    padding: 12px 16px;
+    border-left: 4px solid #c0392b;
+    margin-top: 16px;
+    display: none;
+  }
+  .error-msg.active { display: block; }
+
+  /* Song info table */
+  .song-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    font-size: .92em;
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: rgba(255,255,255,.35);
+    border-left: 3px solid #8b6f3a;
+  }
+  .song-info strong { color: #5a3a1b; }
+  .song-info span { color: #2c3e50; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    color: #5a3a1b;
+    font-size: .85em;
+    margin-top: 40px;
+    opacity: .7;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎵 NBS 可视化视频生成器</h1>
+      <p>上传 .nbs 文件，自动生成 Minecraft 风格的可视化视频</p>
+    </div>
+
+    <!-- Step 1: Upload -->
+    <div class="card" id="uploadCard">
+      <div class="dropzone" id="dropzone">
+        <div class="icon">📦</div>
+        <div class="text">拖拽 .nbs 文件到这里</div>
+        <div class="subtext">或者点击选择文件 (最大 50 MB)</div>
+        <input type="file" id="fileInput" accept=".nbs">
+      </div>
+
+      <div style="margin-top:16px; display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
+        <div style="flex:1; min-width:240px;">
+          <label style="display:block; color:#5a3a1b; font-weight:600; margin-bottom:6px; font-size:.92em;">🎵 音频文件（可选）</label>
+          <div style="position:relative; padding:12px 16px; background:rgba(255,255,255,.3); border:2px dashed #8b6f3a; border-radius:4px; cursor:pointer;" id="audioDropzone">
+            <span id="audioLabel" style="color:#8b6f3a; font-size:.88em;">选择 .mp3 / .wav / .ogg / .m4a 音频</span>
+            <input type="file" id="audioInput" accept=".mp3,.wav,.ogg,.m4a" style="display:none;">
+          </div>
+        </div>
+        <div style="min-width:260px;">
+          <label style="display:flex; align-items:center; gap:8px; color:#5a3a1b; font-weight:600; margin-bottom:6px; font-size:.92em; cursor:pointer;">
+            <input type="checkbox" id="kimiToggle" checked style="width:18px; height:18px; accent-color:#6ab04c; cursor:pointer;">
+            <span>🤖 Kimi AI 参与</span>
+          </label>
+          <div style="padding:10px 14px; background:rgba(106,176,76,.15); border:2px solid #6ab04c; border-radius:4px; color:#5a3a1b; font-size:.82em; line-height:1.6;">
+            <div>✦ 角色命名（给每个乐器取角色名）</div>
+            <div>✦ 智能镜头（根据音乐结构导播）</div>
+            <div>✦ 弹幕点评（模拟观众评论）</div>
+            <div>✦ 字幕引导（关键节点提示）</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="error-msg" id="errorMsg"></div>
+    </div>
+
+    <!-- Step 2: Progress -->
+    <div class="card progress-area" id="progressCard">
+      <h3 style="color:#5a3a1b; margin-bottom: 8px;">⚙️ 正在渲染视频</h3>
+      <div id="renderingFilename" style="color:#8b6f3a; font-size:.9em;"></div>
+      <div class="progress-bar-outer">
+        <div class="progress-bar-inner" id="progressBar"></div>
+      </div>
+      <div class="progress-info">
+        <span class="progress-status" id="progressStatus">排队中...</span>
+        <span class="progress-percent" id="progressPercent">0%</span>
+      </div>
+    </div>
+
+    <!-- Step 3: Result -->
+    <div class="card result-area" id="resultCard">
+      <h3 style="color:#5a3a1b; margin-bottom: 12px;">✅ 渲染完成！</h3>
+      <video id="resultVideo" controls onerror="document.getElementById('videoFallback').style.display='block'; this.style.display='none';"></video>
+      <div id="videoFallback" style="display:none; padding:40px; text-align:center; background:rgba(0,0,0,.05); border:2px dashed #8b6f3a; border-radius:4px; margin-bottom:12px;">
+        <div style="font-size:2em; margin-bottom:8px;">🎬</div>
+        <div style="color:#5a3a1b; font-weight:600;">视频已生成</div>
+        <div style="color:#8b6f3a; font-size:.9em; margin-top:4px;">浏览器无法直接预览，请点击下方按钮下载</div>
+      </div>
+      <div class="result-info" id="resultInfo"></div>
+      <div class="result-actions">
+        <button class="btn btn-download" id="downloadBtn">⬇️ 下载视频</button>
+        <button class="btn btn-secondary" id="newBtn">🔄 处理下一个</button>
+      </div>
+    </div>
+
+    <div class="footer">
+      使用 pynbs + Pillow + OpenCV 构建 · Minecraft 风格贴图
+    </div>
+  </div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const audioDropzone = document.getElementById('audioDropzone');
+const audioInput = document.getElementById('audioInput');
+const audioLabel = document.getElementById('audioLabel');
+const kimiToggle = document.getElementById('kimiToggle');
+const errorMsg = document.getElementById('errorMsg');
+const progressCard = document.getElementById('progressCard');
+const resultCard = document.getElementById('resultCard');
+const progressBar = document.getElementById('progressBar');
+const progressStatus = document.getElementById('progressStatus');
+const progressPercent = document.getElementById('progressPercent');
+const renderingFilename = document.getElementById('renderingFilename');
+const resultVideo = document.getElementById('resultVideo');
+const resultInfo = document.getElementById('resultInfo');
+const downloadBtn = document.getElementById('downloadBtn');
+const newBtn = document.getElementById('newBtn');
+
+let currentTaskId = null;
+let pollHandle = null;
+let selectedAudioFile = null;
+
+function showError(msg) {
+  errorMsg.textContent = '❌ ' + msg;
+  errorMsg.classList.add('active');
+  setTimeout(() => errorMsg.classList.remove('active'), 5000);
+}
+
+function reset() {
+  currentTaskId = null;
+  selectedAudioFile = null;
+  if (pollHandle) clearInterval(pollHandle);
+  progressCard.classList.remove('active');
+  resultCard.classList.remove('active');
+  progressBar.style.width = '0%';
+  progressPercent.textContent = '0%';
+  progressStatus.textContent = '排队中...';
+  fileInput.value = '';
+  audioInput.value = '';
+  audioLabel.textContent = '选择 .mp3 / .wav / .ogg / .m4a 音频';
+}
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropzone.classList.add('dragover');
+});
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length > 0) {
+    handleFile(e.dataTransfer.files[0]);
+  }
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length > 0) handleFile(e.target.files[0]);
+});
+
+audioDropzone.addEventListener('click', () => audioInput.click());
+audioInput.addEventListener('change', e => {
+  if (e.target.files.length > 0) {
+    selectedAudioFile = e.target.files[0];
+    audioLabel.textContent = selectedAudioFile.name + ' (' + (selectedAudioFile.size/1024).toFixed(1) + ' KB)';
+  }
+});
+
+newBtn.addEventListener('click', reset);
+downloadBtn.addEventListener('click', () => {
+  if (currentTaskId) {
+    window.location.href = '/download/' + currentTaskId;
+  }
+});
+
+async function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.nbs')) {
+    showError('只支持 .nbs 文件');
+    return;
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    showError('文件过大（最大 50 MB）');
+    return;
+  }
+
+  resultCard.classList.remove('active');
+  progressCard.classList.add('active');
+  renderingFilename.textContent = '📄 ' + file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)'
+    + (selectedAudioFile ? ' + 🎵 ' + selectedAudioFile.name : '');
+  progressStatus.textContent = '上传中...';
+  progressPercent.textContent = '0%';
+  progressBar.style.width = '0%';
+
+  const formData = new FormData();
+  formData.append('file', file);
+  if (selectedAudioFile) {
+    formData.append('audio', selectedAudioFile);
+  }
+  formData.append('use_kimi', kimiToggle.checked ? 'true' : 'false');
+
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Upload failed');
+    }
+    currentTaskId = data.task_id;
+    progressStatus.textContent = '准备渲染...';
+    pollStatus();
+  } catch (err) {
+    progressCard.classList.remove('active');
+    showError(err.message);
+  }
+}
+
+function pollStatus() {
+  if (pollHandle) clearInterval(pollHandle);
+  pollHandle = setInterval(async () => {
+    if (!currentTaskId) return;
+    try {
+      const res = await fetch('/status/' + currentTaskId);
+      const data = await res.json();
+      if (!res.ok) {
+        clearInterval(pollHandle);
+        showError(data.error || 'Status check failed');
+        return;
+      }
+      const pct = data.progress || 0;
+      progressBar.style.width = pct + '%';
+      progressPercent.textContent = pct + '%';
+      if (data.status === 'rendering') {
+        if (data.message) {
+          progressStatus.textContent = data.message;
+        } else {
+          progressStatus.textContent = '渲染中... 已处理 ' + pct + '%';
+        }
+      } else if (data.status === 'pending') {
+        progressStatus.textContent = '排队中...';
+      } else if (data.status === 'done') {
+        clearInterval(pollHandle);
+        progressBar.style.width = '100%';
+        progressPercent.textContent = '100%';
+        progressStatus.textContent = '渲染完成！';
+        showResult(data);
+      } else if (data.status === 'error') {
+        clearInterval(pollHandle);
+        progressCard.classList.remove('active');
+        showError(data.error || '渲染失败');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, 500);
+}
+
+function showResult(data) {
+  progressCard.classList.remove('active');
+  resultCard.classList.add('active');
+  resultVideo.src = '/preview/' + currentTaskId + '?t=' + Date.now();
+  const sizeMB = (data.file_size / 1024 / 1024).toFixed(2);
+  const finishedAt = new Date(data.finished_at).toLocaleString('zh-CN');
+  resultInfo.innerHTML =
+    '<strong>文件名:</strong> ' + data.filename + '<br>' +
+    '<strong>视频大小:</strong> ' + sizeMB + ' MB<br>' +
+    '<strong>完成时间:</strong> ' + finishedAt;
+}
+</script>
+</body>
+</html>

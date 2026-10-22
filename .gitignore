@@ -1,0 +1,29 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Cache
+.cache/
+
+# ---- 追加（云端AI编程工作流 T02 规范）----
+outputs/
+*.mp4
+*.mov
+*.log
+.workbuddy/
+tmp/

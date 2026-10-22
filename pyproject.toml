@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nbs-visualizer"
+version = "0.1.0"
+description = "Minecraft Note Block (NBS) music visualization video render engine"
+requires-python = ">=3.10"
+dependencies = [
+    "pillow",
+    "numpy",
+    "opencv-python",
+    "pynbs",
+    "python-dotenv",
+    "imageio-ffmpeg",
+    "flask",
+    "pydantic",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

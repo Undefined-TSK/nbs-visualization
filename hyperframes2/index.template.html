@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>NBS · HyperFrames</title>
+<style>
+  @font-face { font-family: "NSSC"; src: url("assets/fonts/NotoSansCJKsc-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: block; }
+  @font-face { font-family: "FiraCode"; src: url("assets/fonts/FiraCode-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: block; }
+  @font-face { font-family: "Smiley"; src: url("assets/fonts/SmileySans-Oblique.otf") format("opentype"); font-weight: 400 900; font-style: normal; font-display: block; }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    --paper: #FFFDF5;
+    --ink: #000000;
+    --pink: #FE90E8;
+    --blue: #C0F7FE;
+    --green: #99E885;
+    --yellow: #F7CB46;
+    --cream: #FFDC8B;
+    --accent: #F7CB46;
+    --font-body: "NSSC", sans-serif;
+    --font-mono: "FiraCode", monospace;
+    --font-display: "Smiley", "NSSC", sans-serif;
+    font-family: var(--font-body);
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  /* ===== 风格皮 ===== */
+  body[data-style="glitch"] {
+    --paper: #06070a; --ink: #f5f5f7; --accent: #00f0ff;
+    --cyan: #00f0ff; --magenta: #ff2bd6;
+  }
+  body[data-style="liquid"] {
+    --paper: #0b1020; --ink: #f7f8ff; --accent: #a78bfa;
+  }
+
+  [data-composition-id="nbs"] { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--paper); }
+  #gl { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+  /* ---------- 背景层（纯 CSS，风格化） ---------- */
+  .bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+  body[data-style="blockframe"] .bg {
+    background-image: radial-gradient(rgba(0,0,0,.16) 1.6px, transparent 1.6px);
+    background-size: 26px 26px;
+  }
+  body[data-style="glitch"] .bg {
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.055) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at 50% 45%, rgba(0,240,255,.10), transparent 62%),
+      radial-gradient(ellipse at 78% 82%, rgba(255,43,214,.10), transparent 55%);
+  }
+  body[data-style="liquid"] .bg { overflow: hidden; }
+  body[data-style="liquid"] .bg::before,
+  body[data-style="liquid"] .bg::after {
+    content: ""; position: absolute; border-radius: 50%; filter: blur(70px);
+  }
+  body[data-style="liquid"] .bg::before {
+    width: 1500px; height: 1200px; left: -320px; top: -420px;
+    background: radial-gradient(circle, rgba(167,139,250,.55), rgba(124,92,255,.16) 55%, transparent 72%);
+  }
+  body[data-style="liquid"] .bg::after {
+    width: 1700px; height: 1300px; right: -420px; bottom: -560px;
+    background: radial-gradient(circle, rgba(90,200,250,.42), rgba(30,58,138,.18) 55%, transparent 74%);
+  }
+
+  /* ---------- 顶部 chrome ---------- */
+  .hud { position: absolute; top: 52px; left: 64px; right: 64px; display: flex; justify-content: space-between; align-items: flex-start; z-index: 6; }
+  .hud-left { display: flex; flex-direction: column; gap: 10px; }
+  .kicker { font: 700 15px/1 var(--font-mono); letter-spacing: .18em; text-transform: uppercase; opacity: .75; }
+  .song { font-family: var(--font-display); font-weight: 900; font-size: 38px; letter-spacing: -.01em; }
+  .hud-right { text-align: right; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .tc { font: 700 26px/1 var(--font-mono); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+
+  body[data-style="blockframe"] .pill {
+    background: #fff; border: 3px solid #000; box-shadow: 4px 4px 0 #000;
+    border-radius: 999px; padding: 9px 18px;
+    font: 700 15px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase;
+  }
+  body[data-style="blockframe"] .pill.inv { background: #000; color: #fff; box-shadow: 4px 4px 0 var(--yellow); }
+  body[data-style="glitch"] .pill {
+    border: 1px solid rgba(0,240,255,.55); color: var(--cyan); padding: 8px 14px;
+    font: 700 14px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
+    background: rgba(0,240,255,.06);
+  }
+  body[data-style="liquid"] .pill {
+    border: 1px solid rgba(255,255,255,.28); border-radius: 999px; padding: 9px 18px;
+    font: 600 14px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase;
+    background: rgba(255,255,255,.07); backdrop-filter: blur(6px);
+  }
+
+  /* ---------- 3D 标签 ---------- */
+  .blabel {
+    position: absolute; left: 0; top: 0; z-index: 4;
+    transform: translate(-50%, -50%);
+    white-space: nowrap; will-change: transform, opacity; opacity: 0;
+  }
+  body[data-style="blockframe"] .blabel {
+    background: #000; color: #fff; border-radius: 3px; padding: 5px 9px;
+    font: 700 15px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase;
+  }
+  body[data-style="glitch"] .blabel {
+    color: var(--cyan); font: 700 14px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+    text-shadow: 1.5px 0 rgba(255,43,214,.9), -1.5px 0 rgba(0,240,255,.9);
+    background: rgba(0,0,0,.62); border: 1px solid rgba(0,240,255,.35); padding: 4px 8px;
+  }
+  body[data-style="liquid"] .blabel {
+    color: rgba(255,255,255,.9); font: 600 14px/1 var(--font-mono); letter-spacing: .1em;
+    background: rgba(10,14,30,.5); border: 1px solid rgba(255,255,255,.16);
+    border-radius: 8px; padding: 4px 9px; backdrop-filter: blur(4px);
+  }
+  .blabel .dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+
+  /* ---------- 歌词 ---------- */
+  #rail {
+    position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%);
+    display: flex; gap: 10px; z-index: 7; max-width: 1500px; justify-content: center;
+  }
+  #rail .w { opacity: .35; will-change: opacity, transform; }
+  body[data-style="blockframe"] #rail .w {
+    font-family: var(--font-display); font-weight: 900; font-size: 40px; color: #000;
+    background: #fff; border: 2px solid #000; padding: 4px 12px 8px;
+  }
+  body[data-style="glitch"] #rail .w {
+    font: 700 30px/1 var(--font-display); color: rgba(255,255,255,.45);
+    border-bottom: 2px solid transparent; padding-bottom: 6px;
+  }
+  body[data-style="liquid"] #rail .w {
+    font: 600 32px/1 var(--font-display); color: rgba(255,255,255,.5);
+  }
+  .w.on { opacity: 1 !important; }
+  body[data-style="blockframe"] #rail .w.on { background: var(--yellow); box-shadow: 5px 5px 0 #000; }
+  body[data-style="glitch"] #rail .w.on { color: #fff; border-bottom-color: var(--cyan); text-shadow: 0 0 18px rgba(0,240,255,.8); }
+  body[data-style="liquid"] #rail .w.on { color: #fff; }
+
+  /* 快闪大字 */
+  #flash { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; padding-bottom: 150px; pointer-events: none; }
+  #flash .fw {
+    position: absolute; opacity: 0; will-change: transform, opacity;
+    font-family: var(--font-display);
+    font-weight: 900; text-transform: uppercase; letter-spacing: -.02em; white-space: nowrap;
+  }
+  body[data-style="blockframe"] #flash .fw {
+    font-size: 168px; color: #000; background: var(--pink);
+    border: 6px solid #000; box-shadow: 12px 12px 0 #000; padding: 6px 28px 18px;
+  }
+  body[data-style="glitch"] #flash .fw {
+    font-size: 186px; color: #fff;
+    text-shadow: 6px 0 var(--magenta), -6px 0 var(--cyan), 0 0 40px rgba(0,240,255,.5);
+  }
+  body[data-style="liquid"] #flash .fw {
+    font-size: 180px; color: #fff; letter-spacing: .02em;
+    text-shadow: 0 10px 60px rgba(124,92,255,.75);
+  }
+
+  /* ---------- 底部 ---------- */
+  .footer { position: absolute; left: 64px; right: 64px; bottom: 40px; z-index: 6; display: flex; align-items: center; gap: 20px; }
+  .bar { flex: 1; height: 10px; background: rgba(120,120,120,.28); overflow: hidden; }
+  body[data-style="blockframe"] .bar { border: 2px solid #000; background: rgba(0,0,0,.08); }
+  .bar > i { display: block; height: 100%; width: 0%; }
+  body[data-style="blockframe"] .bar > i { background: #000; }
+  body[data-style="glitch"] .bar > i { background: linear-gradient(90deg, var(--cyan), var(--magenta)); }
+  body[data-style="liquid"] .bar > i { background: linear-gradient(90deg, #a78bfa, #5ac8fa); }
+  .meta { font: 600 13px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
+
+  /* 装饰 */
+  .deco { position: absolute; z-index: 3; pointer-events: none; }
+  body[data-style="blockframe"] .star {
+    right: 110px; top: 180px; transform: rotate(12deg);
+    width: 120px; height: 120px; background: var(--blue); border: 3px solid #000;
+    clip-path: polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
+  }
+  body[data-style="glitch"] .deco-corner {
+    left: 56px; bottom: 132px; width: 190px; height: 190px;
+    border-left: 2px solid rgba(0,240,255,.45);
+    border-bottom: 2px solid rgba(0,240,255,.45);
+  }
+  body[data-style="liquid"] .deco-ring {
+    left: 96px; bottom: 150px; width: 260px; height: 260px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.18);
+  }
+</style>
+</head>
+<body data-style="%%STYLE%%">
+<div data-composition-id="nbs" data-width="1920" data-height="1080"
+     data-start="0" data-duration="%%DURATION%%" data-track-index="0">
+
+  <div class="bg"></div>
+  <canvas id="gl" width="1920" height="1080"></canvas>
+
+  <div class="deco star" id="deco1"></div>
+  <div class="deco deco-corner"></div>
+  <div class="deco deco-ring"></div>
+
+  <div class="hud">
+    <div class="hud-left">
+      <div class="kicker" id="kicker">NBS · HYPERFRAMES</div>
+      <div class="song" id="song"></div>
+    </div>
+    <div class="hud-right">
+      <div class="pill inv" id="tracks-chip">00 TRACKS</div>
+      <div class="tc" id="tc">00:00</div>
+    </div>
+  </div>
+
+  <div id="rail"></div>
+  <div id="flash"></div>
+
+  <div class="footer">
+    <div class="meta" id="meta">NBS</div>
+    <div class="bar"><i id="prog"></i></div>
+    <div class="meta" id="tc2">00:00</div>
+  </div>
+</div>
+%%AUDIO_CLIP%%
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/three.min.js"></script>
+<script src="song_data.js"></script>
+<script>
+window.__timelines = window.__timelines || {};
+
+/* ---------- 工具 ---------- */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+function lowerBound(a, x) { var l = 0, h = a.length; while (l < h) { var m = (l + h) >> 1; if (a[m] < x) l = m + 1; else h = m; } return l; }
+function fmt(s) { s = Math.max(0, Math.floor(s)); var m = Math.floor(s / 60), x = s % 60; return (m < 10 ? "0" + m : m) + ":" + (x < 10 ? "0" + x : x); }
+
+var D = window.SONG_DATA;
+var INTRO = %%INTRO%%, SONG = D.meta.duration, TOTAL = %%DURATION%%;
+var OUTRO = D.outro != null ? D.outro : Math.max(0, TOTAL - INTRO - SONG);
+var STYLE = D.style || "blockframe";
+
+/* ---------- chrome ---------- */
+document.getElementById("song").textContent = D.meta.name;
+document.getElementById("kicker").textContent = (D.meta.author || "NBS") + " · HYPERFRAMES";
+document.getElementById("tracks-chip").textContent = ("0" + D.tracks.length).slice(-2) + " TRACKS";
+document.getElementById("meta").textContent = D.meta.tempo + " TPS · " + SONG.toFixed(1) + "S";
+
+var labels = [];
+(function buildLabels() {
+  D.tracks.forEach(function (t, i) {
+    var el = document.createElement("div");
+    el.className = "blabel";
+    if (STYLE === "blockframe") {
+      var d = document.createElement("span");
+      d.className = "dot";
+      d.style.background = ["#FE90E8", "#C0F7FE", "#99E885", "#F7CB46", "#FFDC8B"][i % 5];
+      el.appendChild(d);
+    }
+    el.appendChild(document.createTextNode(t.role));
+    document.body.appendChild(el);
+    labels.push(el);
+  });
+})();
+
+/* ---------- 歌词（一行一屏，词级点亮） ---------- */
+var LYRIC = D.lyric || [];
+var rail = document.getElementById("rail");
+var railLineId = -2, railWords = [];
+
+function buildRail(line) {
+  rail.textContent = "";
+  railWords = [];
+  if (!line) return;
+  (line.words || []).forEach(function (w, wi) {
+    var el = document.createElement("span");
+    el.className = "w";
+    el.textContent = w.t;
+    el.dataset.idx = wi;
+    rail.appendChild(el);
+    railWords.push(el);
+  });
+}
+
+function lyricAt(t) {
+  for (var i = 0; i < LYRIC.length; i++) {
+    var L = LYRIC[i];
+    if (t >= L.start && t < L.end) {
+      var n = 0;
+      for (var k = 0; k < L.words.length; k++) if (t >= L.words[k].s) n = k + 1;
+      return { line: L, shown: n };
+    }
+  }
+  return null;
+}
+
+/* ---------- three.js 场景（官方 adapter 契约） ---------- */
+</script>
+<script>
+/* three.js（官方 UMD 构建，经典脚本加载，避免 file:// 下 ES module 的 CORS 限制） */
+(function () {
+
+const D = window.SONG_DATA;
+const STYLE = D.style || "blockframe";
+const W = 1920, H = 1080;
+const canvas = document.getElementById("gl");
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H, false);
+renderer.setClearColor(0x000000, 0);
+if (THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(34, W / H, 0.1, 300);
+
+scene.add(new THREE.AmbientLight(0xffffff, STYLE === "glitch" ? 0.55 : 1.05));
+const key = new THREE.DirectionalLight(0xffffff, STYLE === "glitch" ? 0.9 : 0.7);
+key.position.set(3.4, 6.2, 4.6);
+scene.add(key);
+if (STYLE === "glitch") {
+  const c1 = new THREE.DirectionalLight(0x00f0ff, 1.1); c1.position.set(-5, 1.5, 2); scene.add(c1);
+  const c2 = new THREE.DirectionalLight(0xff2bd6, 1.1); c2.position.set(5, -1.5, -2); scene.add(c2);
+} else {
+  const rim = new THREE.DirectionalLight(0xffffff, STYLE === "liquid" ? 0.35 : 0.22);
+  rim.position.set(-4, 2.6, -5);
+  scene.add(rim);
+}
+
+const loader = new THREE.TextureLoader();
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const oGeo = new THREE.BoxGeometry(1, 1, 1);
+
+const GAP_X = 1.72, GAP_Z = 2.0;
+const groups = D.groups, tracks = D.tracks;
+
+let pending = 0;
+let lastT = 0;
+
+const blocks = [];
+groups.forEach((g, gi) => {
+  const holder = new THREE.Group();
+  holder.position.z = (gi - (groups.length - 1) / 2) * GAP_Z;
+  scene.add(holder);
+
+  g.tracks.forEach((ti, k) => {
+    const T = tracks[ti];
+    const root = new THREE.Group();
+    root.position.x = (k - (g.tracks.length - 1) / 2) * GAP_X;
+    holder.add(root);
+
+    pending++;
+    const tex = loader.load(T.texture, () => { pending--; render(lastT); });
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+
+    const mat = STYLE === "liquid"
+      ? new THREE.MeshStandardMaterial({ map: tex, metalness: 0.25, roughness: 0.28, emissive: 0x140b30, emissiveIntensity: 0.5 })
+      : new THREE.MeshLambertMaterial({ map: tex });
+    const mesh = new THREE.Mesh(boxGeo, mat);
+    root.add(mesh);
+
+    let outline = null;
+    if (STYLE === "blockframe" || STYLE === "glitch") {
+      outline = new THREE.Mesh(oGeo, new THREE.MeshBasicMaterial({
+        color: STYLE === "blockframe" ? 0x000000 : 0x00f0ff, side: THREE.BackSide
+      }));
+      outline.scale.setScalar(1.075);
+      root.add(outline);
+    }
+
+    blocks[ti] = {
+      root, mesh, mat,
+      starts: T.notes.map(n => n[0]),
+      vels: T.notes.map(n => n[2]),
+      group: gi, energy: 0,
+      screen: { x: 0, y: 0, visible: false }
+    };
+  });
+});
+
+/* 相机包络：包围盒拟合 + 连续拉远（参考视频运镜） */
+let maxCols = 1;
+groups.forEach(g => { maxCols = Math.max(maxCols, g.tracks.length); });
+const halfW = (maxCols * GAP_X) / 2 + 1.0;
+const halfD = (groups.length * GAP_Z) / 2 + 1.0;
+const radius = Math.sqrt(halfW * halfW + halfD * halfD);
+const fitDist = (radius / Math.tan((camera.fov * Math.PI) / 360)) * 0.52;
+
+const PRESS = 0.07, HOLD = 0.13, REL = 0.44;
+function impulse(b, t) {
+  let s = 1, glow = 0, vel = 0;
+  const i0 = lowerBound(b.starts, t - 0.8);
+  for (let i = i0; i < b.starts.length; i++) {
+    const st = b.starts[i];
+    if (st > t) break;
+    const age = t - st;
+    let si;
+    if (age < PRESS) si = 1 - 0.2 * (age / PRESS);
+    else if (age < HOLD) si = 0.8;
+    else {
+      const x = Math.min(1, (age - HOLD) / REL);
+      si = 0.8 + 0.2 * (1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2));
+    }
+    if (si < s) s = si;
+    const g = age < PRESS ? age / PRESS : Math.exp(-(age - PRESS) / 0.30);
+    if (g > glow) { glow = g; vel = b.vels[i]; }
+  }
+  return { s, glow, vel };
+}
+
+const tmp = new THREE.Vector3();
+function render(t) {
+  lastT = t;
+  const p = Math.min(1, Math.max(0, t / Math.max(D.meta.duration, 0.001)));
+
+  const dolly = 1.20 + (0.88 - 1.20) * Math.min(1, p * 1.15);
+  const orbit = STYLE === "glitch" || STYLE === "liquid";
+  const yaw = orbit ? Math.sin(t * 0.22) * 0.5 - 0.28 : 0.13 + Math.sin(t * 0.42) * 0.09;
+  const pitch = 0.36 + Math.sin(t * 0.31 + 1.1) * 0.045 + (orbit ? Math.sin(t * 0.17) * 0.05 : 0);
+  const dist = fitDist * dolly;
+
+  camera.position.set(
+    Math.sin(yaw) * Math.cos(pitch) * dist,
+    Math.sin(pitch) * dist + 0.5,
+    Math.cos(yaw) * Math.cos(pitch) * dist
+  );
+  camera.lookAt(0, -0.42, 0);
+  camera.updateMatrixWorld();
+
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (!b) continue;
+    const imp = impulse(b, t);
+    const born = 0.22 + i * 0.11;
+    const ap = Math.min(1, Math.max(0, (t - born) / 0.4));
+    const ea = ap <= 0 ? 0 : (1 + 2.70158 * Math.pow(ap - 1, 3) + 1.70158 * Math.pow(ap - 1, 2));
+
+    const sc = (ap <= 0 ? 0.001 : 0.55 + 0.45 * ea) * imp.s * (1 + imp.glow * 0.09);
+    b.root.position.y = imp.glow * 0.32 * (0.45 + 0.55 * imp.vel);
+    b.root.scale.setScalar(sc);
+    b.root.visible = ap > 0.001;
+
+    const k = 1 + imp.glow * (STYLE === "glitch" ? 1.5 : 0.5);
+    if (b.mat.emissive) b.mat.emissiveIntensity = 0.5 + imp.glow * 2.2;
+    else b.mat.color.setRGB(k, k, k);
+
+    tmp.set(b.root.position.x, b.root.position.y, b.root.position.z);
+    b.root.getWorldPosition(tmp);
+    tmp.project(camera);
+    b.screen.x = (tmp.x * 0.5 + 0.5) * W;
+    b.screen.y = (-tmp.y * 0.5 + 0.5) * H;
+    b.screen.visible = tmp.z < 1 && b.root.visible;
+    b.energy = imp.glow;
+  }
+
+  renderer.render(scene, camera);
+  if (window.__nbsFrame) window.__nbsFrame(t, blocks);
+}
+render(0);
+
+window.__hfThreeRender_nbs = { state: { t: 0 }, render: () => render(window.__hfThreeRender_nbs.state.t) };
+window.__nbsReady = true;
+
+/* 若宿主在模块加载前已 seek，这里补渲染一次当前时间 */
+(function () {
+  const TL = window.__timelines && window.__timelines["nbs"];
+  const t = TL ? TL.time() : 0;
+  window.__hfThreeRender_nbs.state.t = t;
+  render(t);
+})();
+
+})();
+</script>
+<script>
+/* ---------- 主时间轴 ---------- */
+(function () {
+  var frameState = { t: 0 };
+
+  window.__nbsFrame = function (t, blocks) {
+    // 标签
+    var front = -1;
+    for (var q = 0; q < blocks.length; q++) if (blocks[q] && blocks[q].group > front) front = blocks[q].group;
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i], el = labels[i];
+      if (!b || !el) continue;
+      var vis = b.screen.visible && b.group >= front - 1 && t > 0.55;
+      el.style.opacity = vis ? "1" : "0";
+      if (!vis) continue;
+      var off = 34 + b.energy * 14;
+      el.style.transform = "translate(-50%,-50%) translate(" +
+        b.screen.x.toFixed(1) + "px," + (b.screen.y + off).toFixed(1) + "px)";
+    }
+    // 歌词
+    var cur = lyricAt(t);
+    var lineId = cur ? cur.line.id : -1;
+    if (lineId !== railLineId) { railLineId = lineId; buildRail(cur ? cur.line : null); }
+    var base = cur ? cur.line.start : 0;
+    for (var w = 0; w < railWords.length; w++) {
+      var el2 = railWords[w];
+      var on = cur && w < cur.shown;
+      if (on) el2.classList.add("on"); else el2.classList.remove("on");
+      // 入场：按 t 驱动，保证逐帧渲染可复现
+      var age = t - base - w * 0.028;
+      var k = age <= 0 ? 0 : Math.min(1, age / 0.26);
+      var e = 1 - Math.pow(1 - k, 3);
+      el2.style.transform = "translateY(" + ((1 - e) * 24).toFixed(1) + "px)";
+      el2.style.opacity = on ? "" : (0.35 * e).toFixed(3);
+    }
+    rail.style.opacity = cur ? "1" : "0";
+    // 计时
+    var s = Math.max(0, Math.min(SONG, t));
+    document.getElementById("tc").textContent = fmt(s);
+    document.getElementById("tc2").textContent = fmt(s) + " / " + fmt(SONG);
+    document.getElementById("prog").style.width = (SONG > 0 ? (s / SONG) * 100 : 0) + "%";
+  };
+
+  var tl = gsap.timeline({ paused: true });
+
+  tl.from(".hud", { y: -36, opacity: 0, duration: .5, ease: "power3.out" }, .05);
+  tl.from("#deco1", { scale: 0, rotation: -70, opacity: 0, duration: .55, ease: "back.out(1.7)" }, .25);
+  tl.from(".footer", { y: 26, opacity: 0, duration: .45, ease: "power2.out" }, .35);
+
+  tl.to(frameState, {
+    t: SONG, duration: SONG, ease: "none",
+    onUpdate: function () {
+      var W = window.__hfThreeRender_nbs;
+      if (W) { W.state.t = frameState.t; W.render(); }
+      else if (window.__nbsFrame) { window.__nbsFrame(frameState.t, []); }
+    }
+  }, INTRO);
+
+  /* 歌词快闪：chorus 段落整屏打字 */
+  (D.flashes || []).forEach(function (f, fi) {
+    var el = document.createElement("div");
+    el.className = "fw";
+    el.textContent = f.text;
+    document.getElementById("flash").appendChild(el);
+    tl.fromTo(el, { scale: 1.35, opacity: 0, y: 40 },
+      { scale: 1, opacity: 1, y: 0, duration: .26, ease: "power4.out" }, INTRO + f.t);
+    tl.to(el, { scale: 0.92, opacity: 0, duration: .3, ease: "power2.in" }, INTRO + f.t + f.d);
+  });
+
+  /* 收尾（最后一段允许 exit） */
+  tl.to(".hud, .footer", { opacity: 0, duration: .5 }, INTRO + SONG + .1);
+  tl.to("#deco1", { scale: 1.3, opacity: 0, duration: .5 }, INTRO + SONG + .1);
+
+  window.__timelines["nbs"] = tl;
+})();
+</script>
+</body>
+</html>

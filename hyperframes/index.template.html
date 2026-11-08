@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>NBS Visualizer (HyperFrames)</title>
+<style>
+  @font-face {
+    font-family: "MCFont";
+    src: url("simhei.ttf");
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    font-family: "MCFont", sans-serif;
+    background-color: #e4e4ea;
+    background-image: radial-gradient(#c8c8d2 2px, transparent 2px);
+    background-size: 22px 22px;
+  }
+
+  [data-composition-id="nbs-vis"] {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+  }
+
+  /* ---------- Header ---------- */
+  .header {
+    position: absolute; top: 0; left: 0; right: 0; height: 104px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 64px; z-index: 6;
+  }
+  .song-title { font-size: 42px; font-weight: bold; color: #3a3f4b; letter-spacing: 2px; }
+  .song-sub { font-size: 20px; color: #6a707e; margin-top: 6px; }
+  .time-chip {
+    font-size: 30px; color: #ffffff; background: rgba(40,44,52,0.88);
+    padding: 10px 22px; border-radius: 8px;
+    font-variant-numeric: tabular-nums; letter-spacing: 1px;
+  }
+
+  /* ---------- Stage ---------- */
+  .stage {
+    position: absolute; left: 0; right: 0; top: 104px; bottom: 96px;
+    display: flex; flex-direction: column; justify-content: center;
+    gap: 26px; padding: 0 64px; z-index: 2;
+  }
+  .row { display: flex; gap: 14px; align-items: stretch; }
+
+  .group-card {
+    width: 84px; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 10px; border: 3px solid var(--pal-hl);
+    background: var(--pal-base);
+  }
+  .group-card span {
+    writing-mode: vertical-rl; font-size: 30px; font-weight: bold;
+    color: var(--pal-text); letter-spacing: 6px;
+  }
+
+  .track-card {
+    position: relative;
+    width: var(--card-w);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 10px 8px 8px;
+    background: rgba(255,255,255,0.55);
+    border: 2px solid rgba(90,96,110,0.35);
+    border-radius: 8px;
+  }
+  .stitch {
+    position: absolute; top: 5px; left: 5px; right: 5px; bottom: 5px;
+    border: 2px dashed rgba(255,255,255,0.9); border-radius: 5px;
+    pointer-events: none;
+  }
+  .corner { position: absolute; width: 12px; height: 12px; pointer-events: none; }
+  .corner.tl { top: -2px; left: -2px;  border-top: 3px solid var(--pal-text); border-left: 3px solid var(--pal-text); }
+  .corner.tr { top: -2px; right: -2px; border-top: 3px solid var(--pal-text); border-right: 3px solid var(--pal-text); }
+  .corner.bl { bottom: -2px; left: -2px;  border-bottom: 3px solid var(--pal-text); border-left: 3px solid var(--pal-text); }
+  .corner.br { bottom: -2px; right: -2px; border-bottom: 3px solid var(--pal-text); border-right: 3px solid var(--pal-text); }
+
+  .chip {
+    color: #fff; background: rgba(40,44,52,0.85);
+    border-radius: 4px; padding: 2px 10px;
+    max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .label-role { font-size: 20px; font-weight: bold; z-index: 2; }
+  .label-inst { font-size: 16px; z-index: 2; }
+
+  .block-wrap {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    will-change: transform; z-index: 1;
+  }
+  .block {
+    width: var(--block); height: var(--block);
+    image-rendering: pixelated;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
+  }
+
+  .spectrum {
+    width: 100%; height: 26px; margin-top: 6px;
+    display: flex; gap: 3px; align-items: flex-end; z-index: 1;
+  }
+  .spectrum i {
+    flex: 1; height: 2px; display: block;
+    background: var(--pal-hl); border-radius: 1px;
+  }
+
+  /* ---------- Particle canvas ---------- */
+  #fx {
+    position: absolute; inset: 0; z-index: 5; pointer-events: none;
+  }
+
+  /* ---------- Footer / progress ---------- */
+  .footer {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 96px;
+    display: flex; align-items: center; padding: 0 64px; z-index: 6;
+  }
+  .progress-track {
+    width: 100%; height: 14px; border-radius: 7px;
+    background: rgba(90,96,110,0.25); overflow: hidden;
+  }
+  .progress-fill {
+    width: 0%; height: 100%; border-radius: 7px;
+    background: linear-gradient(90deg, #5bc0de, #27ae60);
+  }
+
+  /* ---------- End card ---------- */
+  .end-overlay {
+    position: absolute; inset: 0; z-index: 8;
+    background: rgba(228,228,234,0.0);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+  }
+  .end-card {
+    background: rgba(40,44,52,0.92); border-radius: 14px;
+    padding: 40px 90px; text-align: center;
+  }
+  .end-title { font-size: 64px; font-weight: bold; color: #fff; letter-spacing: 8px; }
+  .end-sub { font-size: 26px; color: #c8ccd4; margin-top: 14px; letter-spacing: 2px; }
+</style>
+</head>
+<body>
+  <div data-composition-id="nbs-vis" data-width="1920" data-height="1080"
+       data-start="0" data-duration="%%DATA_DURATION%%" data-track-index="0">
+    <div class="header">
+      <div>
+        <div class="song-title" id="song-title"></div>
+        <div class="song-sub" id="song-sub"></div>
+      </div>
+      <div class="time-chip" id="time-chip">00:00 / 00:00</div>
+    </div>
+    <div class="stage" id="stage"></div>
+    <canvas id="fx" width="1920" height="1080"></canvas>
+    <div class="footer">
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <div class="end-overlay" id="end-overlay">
+      <div class="end-card">
+        <div class="end-title">演奏结束</div>
+        <div class="end-sub" id="end-sub"></div>
+      </div>
+    </div>
+  </div>
+%%AUDIO_CLIP%%
+<script src="gsap.min.js"></script>
+<script src="song_data.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.SONG_DATA;
+  var INTRO = %%INTRO%%, SONG = D.meta.duration, OUTRO = 2.4;
+  var DURATION = INTRO + SONG + OUTRO;
+  var END_AT = INTRO + SONG;
+
+  /* ---------- deterministic PRNG ---------- */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hash01(a, b) {
+    var x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function easeOutBack(x) { var c = 1.70158; var u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; }
+
+  /* ---------- layout ---------- */
+  var stage = document.getElementById("stage");
+  var groups = D.groups;              // [{index,name,tracks:[trackIdx...]}]
+  var tracks = D.tracks;              // [{role,inst,group_index,texture,notes:[[t,key,vel]...]}]
+  var palette = D.palette;            // [{base,hl,text}]
+
+  var maxN = 1;
+  groups.forEach(function (g) { maxN = Math.max(maxN, g.tracks.length); });
+
+  var GAP = 14, LABEL_W = 84, STAGE_W = 1920 - 128;
+  var cardW = Math.floor((STAGE_W - LABEL_W - GAP - (maxN - 1) * GAP) / maxN);
+  cardW = clamp(cardW, 104, 184);
+  var perRow = Math.floor((STAGE_W - LABEL_W - GAP + GAP) / (cardW + GAP));
+  perRow = Math.max(1, Math.min(perRow, maxN));
+
+  // wrap groups into rows
+  var rows = [];
+  groups.forEach(function (g) {
+    for (var i = 0; i < g.tracks.length; i += perRow) {
+      rows.push({ group: g, chunk: g.tracks.slice(i, i + perRow), first: i === 0 });
+    }
+  });
+  // initial size; vertical fit is measured after DOM build below
+  var blockSize = cardW - 30;
+  function applySize() {
+    stage.style.setProperty("--card-w", cardW + "px");
+    stage.style.setProperty("--block", blockSize + "px");
+  }
+  applySize();
+
+  document.getElementById("song-title").textContent = D.meta.name;
+  document.getElementById("song-sub").textContent =
+    (D.meta.author ? D.meta.author + " · " : "") + tracks.length + " 轨 · " + D.meta.tempo + " tps";
+  document.getElementById("end-sub").textContent = D.meta.name;
+
+  var trackViews = [];
+  rows.forEach(function (r) {
+    var rowEl = document.createElement("div");
+    rowEl.className = "row";
+    var pal = palette[r.group.index % palette.length];
+    if (r.first) {
+      var gc = document.createElement("div");
+      gc.className = "group-card";
+      gc.style.setProperty("--pal-hl", pal.hl);
+      gc.style.setProperty("--pal-base", pal.base);
+      gc.style.setProperty("--pal-text", pal.text);
+      var sp = document.createElement("span");
+      sp.textContent = r.group.name;
+      gc.appendChild(sp);
+      rowEl.appendChild(gc);
+    } else {
+      var pad = document.createElement("div");
+      pad.style.width = LABEL_W + "px"; pad.style.flex = "0 0 auto";
+      rowEl.appendChild(pad);
+    }
+    r.chunk.forEach(function (ti) {
+      var t = tracks[ti];
+      var tp = palette[t.group_index % palette.length];
+      var card = document.createElement("div");
+      card.className = "track-card";
+      card.style.setProperty("--pal-hl", tp.hl);
+      card.style.setProperty("--pal-text", tp.text);
+      card.innerHTML =
+        '<div class="stitch"></div>' +
+        '<div class="corner tl"></div><div class="corner tr"></div>' +
+        '<div class="corner bl"></div><div class="corner br"></div>' +
+        '<div class="chip label-role"></div>' +
+        '<div class="block-wrap"><img class="block"></div>' +
+        '<div class="spectrum">' + "<i></i>".repeat(8) + "</div>" +
+        '<div class="chip label-inst"></div>';
+      card.querySelector(".label-role").textContent = t.role;
+      card.querySelector(".label-inst").textContent = t.inst;
+      card.querySelector(".block").src = "textures/" + t.texture;
+      rowEl.appendChild(card);
+      trackViews[ti] = {
+        card: card,
+        wrap: card.querySelector(".block-wrap"),
+        bars: card.querySelectorAll(".spectrum i"),
+        hl: tp.hl,
+        starts: t.notes.map(function (n) { return n[0]; }),
+        vels: t.notes.map(function (n) { return n[2]; }),
+        cx: 0, cy: 0, lastHit: -1
+      };
+    });
+    stage.appendChild(rowEl);
+  });
+
+  // measured vertical fit: shrink until rows fit the stage
+  var guard = 0;
+  while (stage.scrollHeight > stage.clientHeight + 2 && cardW > 80 && guard++ < 40) {
+    cardW -= 4; blockSize = cardW - 30;
+    applySize();
+  }
+
+  // particle origins (after DOM layout, before any transform)
+  trackViews.forEach(function (v) {
+    if (!v) return;
+    var rect = v.wrap.getBoundingClientRect();
+    v.cx = rect.left + rect.width / 2;
+    v.cy = rect.top + rect.height / 2;
+  });
+
+  /* ---------- particles (precomputed, seeded) ---------- */
+  var particles = [];
+  var hitCounter = 0;
+  tracks.forEach(function (t, ti) {
+    var pal = palette[t.group_index % palette.length];
+    t.notes.forEach(function (n, ni) {
+      var rng = mulberry32(ti * 100003 + ni * 131 + 7);
+      for (var k = 0; k < 6; k++) {
+        var ang = (-160 + rng() * 140) * Math.PI / 180;
+        var speed = 130 + rng() * 160;
+        particles.push({
+          track: ti, t0: n[0],
+          vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+          life: 0.7 + rng() * 0.45,
+          size: 4 + rng() * 4,
+          rot: rng() * Math.PI,
+          spin: (rng() - 0.5) * 6,
+          color: pal.hl
+        });
+      }
+      hitCounter++;
+    });
+  });
+  // ambient background dust
+  var dust = [];
+  var drng = mulberry32(20241108);
+  for (var di = 0; di < 18; di++) {
+    dust.push({
+      x: drng() * 1920, y0: 200 + drng() * 880,
+      speed: 8 + drng() * 14, size: 3 + drng() * 5,
+      phase: drng() * 100, alpha: 0.10 + drng() * 0.10
+    });
+  }
+
+  var fx = document.getElementById("fx").getContext("2d");
+  var timeChip = document.getElementById("time-chip");
+  var progressFill = document.getElementById("progress-fill");
+
+  function fmt(s) {
+    s = Math.max(0, Math.round(s));
+    var m = Math.floor(s / 60), ss = s % 60;
+    return (m < 10 ? "0" + m : m) + ":" + (ss < 10 ? "0" + ss : ss);
+  }
+
+  // binary search: first index with starts[i] >= x
+  function lowerBound(arr, x) {
+    var lo = 0, hi = arr.length;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (arr[mid] < x) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+
+  var PRESS_T = 0.06, HOLD_T = 0.14, REL_T = 0.50, PRESS_S = 0.82;
+
+  function renderDyn(tAbs) {
+    var tSong = tAbs - INTRO;
+
+    // time + progress
+    var tc = clamp(tSong, 0, SONG);
+    timeChip.textContent = fmt(tc) + " / " + fmt(SONG);
+    progressFill.style.width = (SONG > 0 ? (tc / SONG) * 100 : 0) + "%";
+
+    // per-track press envelope + highlight + spectrum
+    for (var ti = 0; ti < trackViews.length; ti++) {
+      var v = trackViews[ti];
+      if (!v) continue;
+      var s = 1.0, glow = 0, hitVel = 0, hitIdx = -1;
+      var i0 = lowerBound(v.starts, tSong - 0.75);
+      for (var i = i0; i < v.starts.length; i++) {
+        var st = v.starts[i];
+        if (st > tSong) break;
+        var age = tSong - st;
+        var si;
+        if (age < PRESS_T) si = 1 - (1 - PRESS_S) * (age / PRESS_T);
+        else if (age < HOLD_T) si = PRESS_S;
+        else si = PRESS_S + (1 - PRESS_S) * easeOutBack(clamp((age - HOLD_T) / REL_T, 0, 1));
+        if (si < s) s = si;
+        var g = age < PRESS_T ? age / PRESS_T : Math.exp(-(age - PRESS_T) / 0.28);
+        if (g > glow) { glow = g; hitVel = v.vels[i]; hitIdx = i; }
+      }
+      v.wrap.style.transform = "scale(" + s.toFixed(4) + ")";
+      if (glow > 0.03) {
+        v.card.style.borderColor = v.hl;
+        v.card.style.boxShadow = "0 0 0 3px " + v.hl + ", 0 0 " + Math.round(22 * glow) + "px " + v.hl;
+      } else {
+        v.card.style.borderColor = "";
+        v.card.style.boxShadow = "";
+      }
+      for (var b = 0; b < v.bars.length; b++) {
+        var h = 2;
+        if (glow > 0.03 && hitIdx >= 0) {
+          h = 2 + glow * (0.4 + 0.6 * hitVel) * (0.25 + 0.75 * hash01(hitIdx * 13 + 1, b * 7 + 3)) * 24;
+        }
+        v.bars[b].style.height = h.toFixed(1) + "px";
+      }
+    }
+
+    // particles
+    fx.clearRect(0, 0, 1920, 1080);
+    // ambient dust
+    for (var d = 0; d < dust.length; d++) {
+      var p0 = dust[d];
+      var yy = p0.y0 - ((tAbs * p0.speed + p0.phase * 40) % 980);
+      if (yy < 100) yy += 980;
+      fx.globalAlpha = p0.alpha;
+      fx.fillStyle = "#9aa2b5";
+      fx.fillRect(p0.x, yy, p0.size, p0.size);
+    }
+    fx.globalAlpha = 1;
+    if (tSong >= -0.5) {
+      for (var pi = 0; pi < particles.length; pi++) {
+        var p = particles[pi];
+        var age2 = tSong - p.t0;
+        if (age2 < 0 || age2 > p.life) continue;
+        var v2 = trackViews[p.track];
+        var x = v2.cx + p.vx * age2;
+        var y = v2.cy + p.vy * age2 + 250 * age2 * age2;
+        fx.globalAlpha = (1 - age2 / p.life) * 0.95;
+        fx.fillStyle = p.color;
+        fx.save();
+        fx.translate(x, y);
+        fx.rotate(p.rot + p.spin * age2);
+        fx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        fx.restore();
+      }
+    }
+    fx.globalAlpha = 1;
+  }
+
+  /* ---------- timeline ---------- */
+  window.__timelines = window.__timelines || {};
+  var tl = gsap.timeline({ paused: true });
+
+  // entrances
+  tl.from(".header", { y: -40, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.05);
+  tl.from(".row", { y: 44, opacity: 0, duration: 0.55, stagger: 0.1, ease: "power3.out" }, 0.15);
+  tl.from(".footer", { y: 30, opacity: 0, duration: 0.45, ease: "back.out(1.4)" }, 0.55);
+
+  // master deterministic driver
+  var state = { t: 0 };
+  tl.to(state, {
+    t: DURATION, duration: DURATION, ease: "none",
+    onUpdate: function () { renderDyn(state.t); }
+  }, 0);
+
+  // outro (final scene — exit allowed)
+  tl.to(".end-overlay", { opacity: 1, duration: 0.5, ease: "power1.inOut" }, END_AT + 0.55);
+  tl.from(".end-card", { scale: 0.7, opacity: 0, duration: 0.55, ease: "back.out(1.6)" }, END_AT + 0.7);
+  tl.to(".header, .stage, .footer", { opacity: 0, duration: 0.8, ease: "power2.inOut" }, END_AT + 0.8);
+
+  window.__timelines["nbs-vis"] = tl;
+})();
+</script>
+</body>
+</html>

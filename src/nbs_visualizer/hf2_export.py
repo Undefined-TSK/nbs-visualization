@@ -183,8 +183,18 @@ def export_project(nbs_file: str, project_dir: str,
     note_total = 0
     for t in tracks:
         tex_name = INSTRUMENT_MAP.get(t.instrument_id, INSTRUMENT_MAP[0])[0]
-        notes = sorted(([round(s, 3), k, round(v, 3), round(max(0.05, e - s), 3)]
-                        for (s, e, k, v) in t.notes if s < song_total), key=lambda n: n[0])
+        raw = sorted(([round(s, 3), k, round(v, 3), round(max(0.05, e - s), 3)]
+                      for (s, e, k, v) in t.notes if s < song_total), key=lambda n: n[0])
+        # 同轨同时刻音符去重（合并同名层后可能出现），保留力度最大的，避免 lane 内方块重叠
+        notes = []
+        last_start = None
+        for n in raw:
+            if n[0] == last_start and notes:
+                if n[2] > notes[-1][2]:
+                    notes[-1] = n
+            else:
+                notes.append(n)
+                last_start = n[0]
         note_total += len(notes)
         tracks_data.append({
             "role": t.role_name,

@@ -414,10 +414,10 @@ tracks.forEach((T, ti) => {
       o.scale.setScalar(1.07);
       grp.add(o);
     }
-    /* 统一方块尺寸（不随力度/时值变化） */
+    /* 统一方块尺寸（不随力度/时值变化）；深度按曲目 tempo 自适应，避免密集区方块重叠 */
     const baseW = LANE_W * 0.80;
     const baseH = 0.55;
-    const baseD = 0.55;
+    const baseD = Math.min(0.45, Math.max(0.18, (1 / D.meta.tempo) * SPEED * 0.82));
     grp.position.set(laneX, baseH / 2, 0);
     grp.scale.set(baseW, baseH, baseD);
     grp.userData = { start, vel, laneX, mat, mesh, ti };

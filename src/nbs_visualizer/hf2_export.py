@@ -183,7 +183,7 @@ def export_project(nbs_file: str, project_dir: str,
     note_total = 0
     for t in tracks:
         tex_name = INSTRUMENT_MAP.get(t.instrument_id, INSTRUMENT_MAP[0])[0]
-        notes = sorted(([round(s, 3), k, round(v, 3)]
+        notes = sorted(([round(s, 3), k, round(v, 3), round(max(0.05, e - s), 3)]
                         for (s, e, k, v) in t.notes if s < song_total), key=lambda n: n[0])
         note_total += len(notes)
         tracks_data.append({

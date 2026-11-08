@@ -98,7 +98,7 @@
   }
   body[data-style="blockframe"] .blabel {
     background: #000; color: #fff; border-radius: 3px; padding: 5px 9px;
-    font: 700 15px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase;
+    font: 700 13px/1 var(--font-mono); letter-spacing: .04em;
   }
   body[data-style="glitch"] .blabel {
     color: var(--cyan); font: 700 14px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
@@ -325,51 +325,56 @@ if (STYLE === "glitch") {
   scene.add(rim);
 }
 
+/* ============ 音游 (rhythm-game) 形式 ============
+   每条轨道 = 一条 lane；音符方块从远处沿 -Z 滑向判定线 (z=0)。
+   方块大小：高度 = 力度，深度 = 时值，宽度 =  lane 宽。
+   命中：|z| 小时发光放大；越过判定线后上浮消失。
+*/
 const loader = new THREE.TextureLoader();
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const oGeo = new THREE.BoxGeometry(1, 1, 1);
 
 const groups = D.groups, tracks = D.tracks;
+const N = tracks.length;
 
-/* 轨道 -> 分组 的映射 */
-const trackGroup = new Array(tracks.length).fill(0);
+const trackGroup = new Array(N).fill(0);
 groups.forEach((g, gi) => g.tracks.forEach(ti => { trackGroup[ti] = gi; }));
 
-/* 每块大小 = prominence（音符数 × 平均力度），范围 [0.55, 2.10] */
-let maxProm = 0.0001;
-const proms = tracks.map(T => {
-  let v = 0;
-  for (let i = 0; i < T.notes.length; i++) v += T.notes[i][2];
-  const p = T.notes.length * (T.notes.length ? v / T.notes.length : 0);
-  if (p > maxProm) maxProm = p;
-  return p;
-});
+const LANE_W = Math.max(0.7, Math.min(1.3, 1.42 - N * 0.042));
+const SPEED = 2.7;          /* 沿 lane 的速度 (单位/秒) */
+const LOOKAHEAD = 6.0;      /* 预读未来多少秒的音符 */
+const HOLD = 1.3;           /* 越过判定线后保留多久 */
+const HIT_Z = 0.5;          /* 命中判定半宽 */
 
-const GOLDEN = 2.39996323;   /* 黄金角：螺旋排布无重叠 */
-const SPIRAL_C = 1.55;       /* 螺旋密度系数 */
-const LAYER_H = 1.05;        /* 分组层叠高度 */
+camera.fov = 52;
+camera.updateProjectionMatrix();
 
-const holder = new THREE.Group();   /* 整盘一个 group，用于自转 */
+/* 相机距离：让所有 lane 刚好入镜 */
+const TOTAL_W = N * LANE_W;
+const FIT_Z = (TOTAL_W / (2 * Math.tan((camera.fov * Math.PI) / 360) * (W / H))) * 1.18;
+
+const holder = new THREE.Group();
 scene.add(holder);
 
 let pending = 0;
 let lastT = 0;
 
-const blocks = [];
+/* 分组配色（lane 底色 / 判定线辉光） */
+const LANE_COLORS = STYLE === "glitch"
+  ? [0x00f0ff, 0xff2bd6, 0x7c5cff, 0x00ffa3, 0xffdd00]
+  : STYLE === "liquid"
+  ? [0xa78bfa, 0x5ac8fa, 0xf472b6, 0x86efac, 0xfcd34d]
+  : [0xFE90E8, 0xC0F7FE, 0x99E885, 0xF7CB46, 0xFFDC8B];
+
+const laneMats = groups.map((_, gi) => new THREE.MeshBasicMaterial({
+  color: LANE_COLORS[gi % LANE_COLORS.length],
+  transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false
+}));
+
+/* 每轨材质 + 贴图 */
+const trackMats = [];
+const trackOutMats = [];
 tracks.forEach((T, ti) => {
-  const gi = trackGroup[ti];
-  const angle = ti * GOLDEN;
-  const r = SPIRAL_C * Math.sqrt(ti + 0.5);
-  const root = new THREE.Group();
-  root.position.set(
-    r * Math.cos(angle),
-    (gi - (groups.length - 1) / 2) * LAYER_H,
-    r * Math.sin(angle)
-  );
-  holder.add(root);
-
-  const baseScale = 0.55 + (proms[ti] / maxProm) * 1.55;
-
   pending++;
   const tex = loader.load(T.texture, () => { pending--; render(lastT); });
   tex.magFilter = THREE.NearestFilter;
@@ -377,109 +382,207 @@ tracks.forEach((T, ti) => {
   tex.generateMipmaps = false;
   if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
 
+  const gi = trackGroup[ti];
   const mat = STYLE === "liquid"
-    ? new THREE.MeshStandardMaterial({ map: tex, metalness: 0.25, roughness: 0.28, emissive: 0x140b30, emissiveIntensity: 0.5 })
+    ? new THREE.MeshStandardMaterial({ map: tex, metalness: 0.22, roughness: 0.30,
+        emissive: LANE_COLORS[gi % LANE_COLORS.length], emissiveIntensity: 0.12 })
     : new THREE.MeshLambertMaterial({ map: tex });
-  const mesh = new THREE.Mesh(boxGeo, mat);
-  root.add(mesh);
+  trackMats.push(mat);
 
-  let outline = null;
   if (STYLE === "blockframe" || STYLE === "glitch") {
-    outline = new THREE.Mesh(oGeo, new THREE.MeshBasicMaterial({
-      color: STYLE === "blockframe" ? 0x000000 : 0x00f0ff, side: THREE.BackSide
+    trackOutMats.push(new THREE.MeshBasicMaterial({
+      color: STYLE === "blockframe" ? 0x000000 : LANE_COLORS[gi % LANE_COLORS.length],
+      side: THREE.BackSide
     }));
-    outline.scale.setScalar(1.075);
-    root.add(outline);
+  } else {
+    trackOutMats.push(null);
   }
-
-  blocks[ti] = {
-    root, mesh, mat, outline,
-    baseScale, baseY: root.position.y, angle, r,
-    starts: T.notes.map(n => n[0]),
-    vels: T.notes.map(n => n[2]),
-    group: gi, energy: 0,
-    screen: { x: 0, y: 0, visible: false }
-  };
 });
 
-/* 相机包络：包围盒拟合 + 连续拉远（参考视频运镜） */
-let maxCols = 1;
-groups.forEach(g => { maxCols = Math.max(maxCols, g.tracks.length); });
-const halfW = (maxCols * GAP_X) / 2 + 1.0;
-const halfD = (groups.length * GAP_Z) / 2 + 1.0;
-const radius = Math.sqrt(halfW * halfW + halfD * halfD);
-const fitDist = (radius / Math.tan((camera.fov * Math.PI) / 360)) * 0.52;
-
-const PRESS = 0.07, HOLD = 0.13, REL = 0.44;
-function impulse(b, t) {
-  let s = 1, glow = 0, vel = 0;
-  const i0 = lowerBound(b.starts, t - 0.8);
-  for (let i = i0; i < b.starts.length; i++) {
-    const st = b.starts[i];
-    if (st > t) break;
-    const age = t - st;
-    let si;
-    if (age < PRESS) si = 1 - 0.2 * (age / PRESS);
-    else if (age < HOLD) si = 0.8;
-    else {
-      const x = Math.min(1, (age - HOLD) / REL);
-      si = 0.8 + 0.2 * (1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2));
+/* 每个音符一个 group（克隆材质以便独立发光/透明） */
+const notes = [];
+tracks.forEach((T, ti) => {
+  const laneX = (ti - (N - 1) / 2) * LANE_W;
+  T.notes.forEach(n => {
+    const start = n[0], vel = n[2], dur = n[3] || 0.25;
+    const mat = trackMats[ti].clone();
+    mat.transparent = true;
+    const mesh = new THREE.Mesh(boxGeo, mat);
+    const grp = new THREE.Group();
+    grp.add(mesh);
+    if (trackOutMats[ti]) {
+      const o = new THREE.Mesh(oGeo, trackOutMats[ti]);
+      o.scale.setScalar(1.07);
+      grp.add(o);
     }
-    if (si < s) s = si;
-    const g = age < PRESS ? age / PRESS : Math.exp(-(age - PRESS) / 0.30);
-    if (g > glow) { glow = g; vel = b.vels[i]; }
-  }
-  return { s, glow, vel };
-}
+    const baseW = LANE_W * 0.80;
+    const baseH = 0.20 + vel * 1.05;          /* 力度越高 -> 方块越高 */
+    const baseD = Math.max(0.16, dur * SPEED * 0.72);  /* 时值越长 -> 方块越深 */
+    grp.position.x = laneX;
+    grp.userData = { start, vel, laneX, baseW, baseH, baseD, mat, mesh, ti };
+    holder.add(grp);
+    notes.push(grp);
+  });
+});
+
+/* lane 面板 + 轨道分隔线 */
+const laneLen = (LOOKAHEAD + HOLD) * SPEED;
+const laneGeo = new THREE.PlaneGeometry(LANE_W * 0.96, laneLen);
+const sepGeo = new THREE.PlaneGeometry(0.04, laneLen);
+tracks.forEach((T, ti) => {
+  const laneX = (ti - (N - 1) / 2) * LANE_W;
+  const gi = trackGroup[ti];
+  const lane = new THREE.Mesh(laneGeo, laneMats[gi % laneMats.length]);
+  lane.rotation.x = -Math.PI / 2;
+  lane.position.set(laneX, -0.06, (HOLD - LOOKAHEAD) * SPEED / 2);
+  holder.add(lane);
+
+  const sep = new THREE.Mesh(sepGeo, new THREE.MeshBasicMaterial({
+    color: STYLE === "blockframe" ? 0x000000 : 0xffffff, transparent: true, opacity: 0.18
+  }));
+  sep.rotation.x = -Math.PI / 2;
+  sep.position.set(laneX + LANE_W / 2, -0.05, (HOLD - LOOKAHEAD) * SPEED / 2);
+  holder.add(sep);
+});
+
+/* 判定线 */
+const judgeMat = new THREE.MeshBasicMaterial({
+  color: STYLE === "blockframe" ? 0x000000 : 0xffffff,
+  transparent: true, opacity: 0.92
+});
+const judge = new THREE.Mesh(new THREE.PlaneGeometry(N * LANE_W, 0.16), judgeMat);
+judge.rotation.x = -Math.PI / 2;
+judge.position.set(0, 0.04, 0);
+holder.add(judge);
+
+/* 每轨标签锚点（位于判定线） */
+const blocks = tracks.map((T, ti) => ({
+  group: trackGroup[ti], energy: 0,
+  screen: { x: 0, y: 0, visible: false }
+}));
 
 const tmp = new THREE.Vector3();
 function render(t) {
   lastT = t;
   const p = Math.min(1, Math.max(0, t / Math.max(D.meta.duration, 0.001)));
 
-  const dolly = 1.20 + (0.88 - 1.20) * Math.min(1, p * 1.15);
-  const orbit = STYLE === "glitch" || STYLE === "liquid";
-  const yaw = orbit ? Math.sin(t * 0.22) * 0.5 - 0.28 : 0.13 + Math.sin(t * 0.42) * 0.09;
-  const pitch = 0.36 + Math.sin(t * 0.31 + 1.1) * 0.045 + (orbit ? Math.sin(t * 0.17) * 0.05 : 0);
-  const dist = fitDist * dolly;
-
-  camera.position.set(
-    Math.sin(yaw) * Math.cos(pitch) * dist,
-    Math.sin(pitch) * dist + 0.5,
-    Math.cos(yaw) * Math.cos(pitch) * dist
-  );
-  camera.lookAt(0, -0.42, 0);
+  /* 相机：站在判定线后方，俯视 lane；轻微 sway + 微 dolly */
+  const camX = Math.sin(t * 0.55) * 0.4;
+  const camY = 4.6 + Math.sin(t * 0.31) * 0.3;
+  const camZ = FIT_Z + HOLD * SPEED * 0.35 - p * 0.8;
+  camera.position.set(camX, camY, camZ);
+  camera.lookAt(0, 0.3, -2.5);
   camera.updateMatrixWorld();
 
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i];
-    if (!b) continue;
-    const imp = impulse(b, t);
-    const born = 0.22 + i * 0.11;
-    const ap = Math.min(1, Math.max(0, (t - born) / 0.4));
-    const ea = ap <= 0 ? 0 : (1 + 2.70158 * Math.pow(ap - 1, 3) + 1.70158 * Math.pow(ap - 1, 2));
+  let totalHit = 0;
+  for (let ti = 0; ti < N; ti++) blocks[ti].energy = 0;
 
-    const sc = (ap <= 0 ? 0.001 : 0.55 + 0.45 * ea) * imp.s * (1 + imp.glow * 0.09);
-    b.root.position.y = imp.glow * 0.32 * (0.45 + 0.55 * imp.vel);
-    b.root.scale.setScalar(sc);
-    b.root.visible = ap > 0.001;
+  for (let i = 0; i < notes.length; i++) {
+    const g = notes[i];
+    const u = g.userData;
+    const z = -(u.start - t) * SPEED;      /* 未来 -> 负 z (远)；命中 z=0；过去 -> 正 z */
+    const farZ = -LOOKAHEAD * SPEED;
 
-    const k = 1 + imp.glow * (STYLE === "glitch" ? 1.5 : 0.5);
-    if (b.mat.emissive) b.mat.emissiveIntensity = 0.5 + imp.glow * 2.2;
-    else b.mat.color.setRGB(k, k, k);
+    if (z < farZ || z > HOLD * SPEED) { g.visible = false; continue; }
+    g.visible = true;
 
-    tmp.set(b.root.position.x, b.root.position.y, b.root.position.z);
-    b.root.getWorldPosition(tmp);
+    const absZ = Math.abs(z);
+    const glow = absZ < HIT_Z ? 1 - absZ / HIT_Z : 0;       /* 命中包络 0..1 */
+    if (glow > 0) totalHit += glow;
+
+    /* 越过判定线：上浮 + 缩小 + 淡出 */
+    let past = z > 0 ? Math.min(1, z / (HOLD * SPEED)) : 0;
+    const rise = past * past * 2.2;
+    const shrink = 1 - past * 0.75;
+    const op = z < 0 ? 1 : Math.max(0, 1 - past * 1.15);
+
+    g.position.set(u.laneX, rise, z);
+    g.scale.set(
+      u.baseW * (1 + glow * 0.18) * shrink,
+      u.baseH * (1 + glow * 0.55) * shrink,
+      u.baseD * (1 + glow * 0.12) * shrink
+    );
+    u.mat.opacity = op;
+
+    if (u.mat.emissive) {
+      u.mat.emissiveIntensity = 0.12 + glow * 2.6;
+    } else {
+      const k = 1 + glow * 1.15;
+      u.mat.color.setRGB(k, k, k);
+    }
+
+    /* 标签能量：取该 lane 当前最强命中 */
+    const b = blocks[u.ti];
+    if (glow > b.energy) b.energy = glow;
+  }
+
+  /* 判定线随总命中能量脉冲 */
+  judge.scale.x = 1 + totalHit * 0.04;
+  judgeMat.opacity = 0.7 + Math.min(1, totalHit * 0.4) * 0.3;
+
+  /* 标签锚点：投影每轨判定线位置 */
+  for (let ti = 0; ti < N; ti++) {
+    const b = blocks[ti];
+    const laneX = (ti - (N - 1) / 2) * LANE_W;
+    tmp.set(laneX, 0.25, 0);
+    holder.localToWorld(tmp);
     tmp.project(camera);
     b.screen.x = (tmp.x * 0.5 + 0.5) * W;
     b.screen.y = (-tmp.y * 0.5 + 0.5) * H;
-    b.screen.visible = tmp.z < 1 && b.root.visible;
-    b.energy = imp.glow;
+    b.screen.visible = tmp.z < 1;
   }
 
   renderer.render(scene, camera);
-  if (window.__nbsFrame) window.__nbsFrame(t, blocks);
+
+  /* ---- 逐帧 DOM 更新（与 3D 共用同一个 t，保证 WebGL 与 DOM 同步） ---- */
+  updateDom(t);
 }
+
+function updateDom(t) {
+  // 标签（每轨判定线下方）
+  if (window.labels) {
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i], el = window.labels[i];
+      if (!b || !el) continue;
+      const vis = b.screen.visible && t > 0.3;
+      el.style.opacity = vis ? "1" : "0";
+      if (!vis) continue;
+      const off = 40 + b.energy * 16;
+      const lx = Math.max(60, Math.min(W - 60, b.screen.x));
+      el.style.transform = "translate(-50%,-50%) translate(" +
+        lx.toFixed(1) + "px," + (b.screen.y + off).toFixed(1) + "px)";
+    }
+  }
+  // 歌词
+  if (typeof lyricAt === "function") {
+    const cur = lyricAt(t);
+    const lineId = cur ? cur.line.id : -1;
+    if (lineId !== railLineId) { railLineId = lineId; buildRail(cur ? cur.line : null); }
+    const base = cur ? cur.line.start : 0;
+    for (let w = 0; w < railWords.length; w++) {
+      const el2 = railWords[w];
+      const on = cur && w < cur.shown;
+      if (on) el2.classList.add("on"); else el2.classList.remove("on");
+      const age = t - base - w * 0.028;
+      const k = age <= 0 ? 0 : Math.min(1, age / 0.26);
+      const e = 1 - Math.pow(1 - k, 3);
+      el2.style.transform = "translateY(" + ((1 - e) * 24).toFixed(1) + "px)";
+      el2.style.opacity = on ? "" : (0.35 * e).toFixed(3);
+    }
+    rail.style.opacity = cur ? "1" : "0";
+  }
+  // 计时 / 进度
+  const tcEl = document.getElementById("tc");
+  const tc2El = document.getElementById("tc2");
+  const progEl = document.getElementById("prog");
+  if (tcEl) {
+    const s = Math.max(0, Math.min(SONG, t));
+    tcEl.textContent = fmt(s);
+    if (tc2El) tc2El.textContent = fmt(s) + " / " + fmt(SONG);
+    if (progEl) progEl.style.width = (SONG > 0 ? (s / SONG) * 100 : 0) + "%";
+  }
+}
+window.__nbsUpdateDom = updateDom;
 render(0);
 
 window.__hfThreeRender_nbs = { state: { t: 0 }, render: () => render(window.__hfThreeRender_nbs.state.t) };
@@ -501,18 +604,17 @@ window.__nbsReady = true;
   var frameState = { t: 0 };
 
   window.__nbsFrame = function (t, blocks) {
-    // 标签
-    var front = -1;
-    for (var q = 0; q < blocks.length; q++) if (blocks[q] && blocks[q].group > front) front = blocks[q].group;
+    // 标签（音游：每轨判定线下方显示轨名）
     for (var i = 0; i < blocks.length; i++) {
       var b = blocks[i], el = labels[i];
       if (!b || !el) continue;
-      var vis = b.screen.visible && b.group >= front - 1 && t > 0.55;
+      var vis = b.screen.visible && t > 0.3;
       el.style.opacity = vis ? "1" : "0";
       if (!vis) continue;
-      var off = 34 + b.energy * 14;
+      var off = 40 + b.energy * 16;
+      var lx = Math.max(60, Math.min(W - 60, b.screen.x));
       el.style.transform = "translate(-50%,-50%) translate(" +
-        b.screen.x.toFixed(1) + "px," + (b.screen.y + off).toFixed(1) + "px)";
+        lx.toFixed(1) + "px," + (b.screen.y + off).toFixed(1) + "px)";
     }
     // 歌词
     var cur = lyricAt(t);

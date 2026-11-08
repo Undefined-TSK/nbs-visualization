@@ -415,11 +415,13 @@ tracks.forEach((T, ti) => {
       o.scale.setScalar(1.07);
       grp.add(o);
     }
+    /* 统一方块尺寸（不随力度/时值变化） */
     const baseW = LANE_W * 0.80;
-    const baseH = 0.20 + vel * 1.05;          /* 力度越高 -> 方块越高 */
-    const baseD = Math.max(0.16, dur * SPEED * 0.72);  /* 时值越长 -> 方块越深 */
-    grp.position.x = laneX;
-    grp.userData = { start, vel, laneX, baseW, baseH, baseD, mat, mesh, ti };
+    const baseH = 0.55;
+    const baseD = 0.55;
+    grp.position.set(laneX, baseH / 2, 0);
+    grp.scale.set(baseW, baseH, baseD);
+    grp.userData = { start, vel, laneX, mat, mesh, ti };
     holder.add(grp);
     notes.push(grp);
   });

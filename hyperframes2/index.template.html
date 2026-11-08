@@ -329,54 +329,77 @@ const loader = new THREE.TextureLoader();
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const oGeo = new THREE.BoxGeometry(1, 1, 1);
 
-const GAP_X = 1.72, GAP_Z = 2.0;
 const groups = D.groups, tracks = D.tracks;
+
+/* 轨道 -> 分组 的映射 */
+const trackGroup = new Array(tracks.length).fill(0);
+groups.forEach((g, gi) => g.tracks.forEach(ti => { trackGroup[ti] = gi; }));
+
+/* 每块大小 = prominence（音符数 × 平均力度），范围 [0.55, 2.10] */
+let maxProm = 0.0001;
+const proms = tracks.map(T => {
+  let v = 0;
+  for (let i = 0; i < T.notes.length; i++) v += T.notes[i][2];
+  const p = T.notes.length * (T.notes.length ? v / T.notes.length : 0);
+  if (p > maxProm) maxProm = p;
+  return p;
+});
+
+const GOLDEN = 2.39996323;   /* 黄金角：螺旋排布无重叠 */
+const SPIRAL_C = 1.55;       /* 螺旋密度系数 */
+const LAYER_H = 1.05;        /* 分组层叠高度 */
+
+const holder = new THREE.Group();   /* 整盘一个 group，用于自转 */
+scene.add(holder);
 
 let pending = 0;
 let lastT = 0;
 
 const blocks = [];
-groups.forEach((g, gi) => {
-  const holder = new THREE.Group();
-  holder.position.z = (gi - (groups.length - 1) / 2) * GAP_Z;
-  scene.add(holder);
+tracks.forEach((T, ti) => {
+  const gi = trackGroup[ti];
+  const angle = ti * GOLDEN;
+  const r = SPIRAL_C * Math.sqrt(ti + 0.5);
+  const root = new THREE.Group();
+  root.position.set(
+    r * Math.cos(angle),
+    (gi - (groups.length - 1) / 2) * LAYER_H,
+    r * Math.sin(angle)
+  );
+  holder.add(root);
 
-  g.tracks.forEach((ti, k) => {
-    const T = tracks[ti];
-    const root = new THREE.Group();
-    root.position.x = (k - (g.tracks.length - 1) / 2) * GAP_X;
-    holder.add(root);
+  const baseScale = 0.55 + (proms[ti] / maxProm) * 1.55;
 
-    pending++;
-    const tex = loader.load(T.texture, () => { pending--; render(lastT); });
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    tex.generateMipmaps = false;
-    if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+  pending++;
+  const tex = loader.load(T.texture, () => { pending--; render(lastT); });
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
 
-    const mat = STYLE === "liquid"
-      ? new THREE.MeshStandardMaterial({ map: tex, metalness: 0.25, roughness: 0.28, emissive: 0x140b30, emissiveIntensity: 0.5 })
-      : new THREE.MeshLambertMaterial({ map: tex });
-    const mesh = new THREE.Mesh(boxGeo, mat);
-    root.add(mesh);
+  const mat = STYLE === "liquid"
+    ? new THREE.MeshStandardMaterial({ map: tex, metalness: 0.25, roughness: 0.28, emissive: 0x140b30, emissiveIntensity: 0.5 })
+    : new THREE.MeshLambertMaterial({ map: tex });
+  const mesh = new THREE.Mesh(boxGeo, mat);
+  root.add(mesh);
 
-    let outline = null;
-    if (STYLE === "blockframe" || STYLE === "glitch") {
-      outline = new THREE.Mesh(oGeo, new THREE.MeshBasicMaterial({
-        color: STYLE === "blockframe" ? 0x000000 : 0x00f0ff, side: THREE.BackSide
-      }));
-      outline.scale.setScalar(1.075);
-      root.add(outline);
-    }
+  let outline = null;
+  if (STYLE === "blockframe" || STYLE === "glitch") {
+    outline = new THREE.Mesh(oGeo, new THREE.MeshBasicMaterial({
+      color: STYLE === "blockframe" ? 0x000000 : 0x00f0ff, side: THREE.BackSide
+    }));
+    outline.scale.setScalar(1.075);
+    root.add(outline);
+  }
 
-    blocks[ti] = {
-      root, mesh, mat,
-      starts: T.notes.map(n => n[0]),
-      vels: T.notes.map(n => n[2]),
-      group: gi, energy: 0,
-      screen: { x: 0, y: 0, visible: false }
-    };
-  });
+  blocks[ti] = {
+    root, mesh, mat, outline,
+    baseScale, baseY: root.position.y, angle, r,
+    starts: T.notes.map(n => n[0]),
+    vels: T.notes.map(n => n[2]),
+    group: gi, energy: 0,
+    screen: { x: 0, y: 0, visible: false }
+  };
 });
 
 /* 相机包络：包围盒拟合 + 连续拉远（参考视频运镜） */

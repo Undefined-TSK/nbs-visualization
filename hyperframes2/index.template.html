@@ -541,7 +541,6 @@ function updateDom(t) {
     if (progEl) progEl.style.width = (SONG > 0 ? (s / SONG) * 100 : 0) + "%";
   }
 }
-window.__nbsUpdateDom = updateDom;
 render(0);
 
 window.__hfThreeRender_nbs = { state: { t: 0 }, render: () => render(window.__hfThreeRender_nbs.state.t) };

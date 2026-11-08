@@ -344,7 +344,6 @@ const LANE_W = Math.max(0.7, Math.min(1.3, 1.42 - N * 0.042));
 const SPEED = 2.7;          /* 沿 lane 的速度 (单位/秒) */
 const LOOKAHEAD = 6.0;      /* 预读未来多少秒的音符 */
 const HOLD = 1.3;           /* 越过判定线后保留多久 */
-const HIT_Z = 0.5;          /* 命中判定半宽 */
 
 camera.fov = 52;
 camera.updateProjectionMatrix();
@@ -459,68 +458,31 @@ holder.add(judge);
 
 /* 每轨标签锚点（位于判定线） */
 const blocks = tracks.map((T, ti) => ({
-  group: trackGroup[ti], energy: 0,
   screen: { x: 0, y: 0, visible: false }
 }));
 
 const tmp = new THREE.Vector3();
 function render(t) {
   lastT = t;
-  const p = Math.min(1, Math.max(0, t / Math.max(D.meta.duration, 0.001)));
 
-  /* 相机：站在判定线后方，俯视 lane；轻微 sway + 微 dolly */
-  const camX = Math.sin(t * 0.55) * 0.4;
-  const camY = 4.6 + Math.sin(t * 0.31) * 0.3;
-  const camZ = FIT_Z + HOLD * SPEED * 0.35 - p * 0.8;
-  camera.position.set(camX, camY, camZ);
+  /* 相机：固定俯视 lane */
+  camera.position.set(0, 4.6, FIT_Z + HOLD * SPEED * 0.35);
   camera.lookAt(0, 0.3, -2.5);
   camera.updateMatrixWorld();
 
-  let totalHit = 0;
-  for (let ti = 0; ti < N; ti++) blocks[ti].energy = 0;
+  const farZ = -LOOKAHEAD * SPEED;
+  const nearZ = HOLD * SPEED;
 
   for (let i = 0; i < notes.length; i++) {
     const g = notes[i];
     const u = g.userData;
     const z = -(u.start - t) * SPEED;      /* 未来 -> 负 z (远)；命中 z=0；过去 -> 正 z */
-    const farZ = -LOOKAHEAD * SPEED;
 
-    if (z < farZ || z > HOLD * SPEED) { g.visible = false; continue; }
+    /* 越界直接消失，无动画 */
+    if (z < farZ || z > nearZ) { g.visible = false; continue; }
     g.visible = true;
-
-    const absZ = Math.abs(z);
-    const glow = absZ < HIT_Z ? 1 - absZ / HIT_Z : 0;       /* 命中包络 0..1 */
-    if (glow > 0) totalHit += glow;
-
-    /* 越过判定线：上浮 + 缩小 + 淡出 */
-    let past = z > 0 ? Math.min(1, z / (HOLD * SPEED)) : 0;
-    const rise = past * past * 2.2;
-    const shrink = 1 - past * 0.75;
-    const op = z < 0 ? 1 : Math.max(0, 1 - past * 1.15);
-
-    g.position.set(u.laneX, rise, z);
-    g.scale.set(
-      u.baseW * (1 + glow * 0.18) * shrink,
-      u.baseH * (1 + glow * 0.55) * shrink,
-      u.baseD * (1 + glow * 0.12) * shrink
-    );
-    u.mat.opacity = op;
-
-    if (u.mat.emissive) {
-      u.mat.emissiveIntensity = 0.12 + glow * 2.6;
-    } else {
-      const k = 1 + glow * 1.15;
-      u.mat.color.setRGB(k, k, k);
-    }
-
-    /* 标签能量：取该 lane 当前最强命中 */
-    const b = blocks[u.ti];
-    if (glow > b.energy) b.energy = glow;
+    g.position.z = z;
   }
-
-  /* 判定线随总命中能量脉冲 */
-  judge.scale.x = 1 + totalHit * 0.04;
-  judgeMat.opacity = 0.7 + Math.min(1, totalHit * 0.4) * 0.3;
 
   /* 标签锚点：投影每轨判定线位置 */
   for (let ti = 0; ti < N; ti++) {
@@ -549,27 +511,22 @@ function updateDom(t) {
       const vis = b.screen.visible && t > 0.3;
       el.style.opacity = vis ? "1" : "0";
       if (!vis) continue;
-      const off = 40 + b.energy * 16;
       const lx = Math.max(60, Math.min(W - 60, b.screen.x));
       el.style.transform = "translate(-50%,-50%) translate(" +
-        lx.toFixed(1) + "px," + (b.screen.y + off).toFixed(1) + "px)";
+        lx.toFixed(1) + "px," + (b.screen.y + 40).toFixed(1) + "px)";
     }
   }
-  // 歌词
+  // 歌词（逐字点亮，无入场动画）
   if (typeof lyricAt === "function") {
     const cur = lyricAt(t);
     const lineId = cur ? cur.line.id : -1;
     if (lineId !== railLineId) { railLineId = lineId; buildRail(cur ? cur.line : null); }
-    const base = cur ? cur.line.start : 0;
     for (let w = 0; w < railWords.length; w++) {
       const el2 = railWords[w];
       const on = cur && w < cur.shown;
       if (on) el2.classList.add("on"); else el2.classList.remove("on");
-      const age = t - base - w * 0.028;
-      const k = age <= 0 ? 0 : Math.min(1, age / 0.26);
-      const e = 1 - Math.pow(1 - k, 3);
-      el2.style.transform = "translateY(" + ((1 - e) * 24).toFixed(1) + "px)";
-      el2.style.opacity = on ? "" : (0.35 * e).toFixed(3);
+      el2.style.transform = "none";
+      el2.style.opacity = on ? "" : "0.3";
     }
     rail.style.opacity = cur ? "1" : "0";
   }
@@ -605,60 +562,19 @@ window.__nbsReady = true;
 (function () {
   var frameState = { t: 0 };
 
-  window.__nbsFrame = function (t, blocks) {
-    // 标签（音游：每轨判定线下方显示轨名）
-    for (var i = 0; i < blocks.length; i++) {
-      var b = blocks[i], el = labels[i];
-      if (!b || !el) continue;
-      var vis = b.screen.visible && t > 0.3;
-      el.style.opacity = vis ? "1" : "0";
-      if (!vis) continue;
-      var off = 40 + b.energy * 16;
-      var lx = Math.max(60, Math.min(W - 60, b.screen.x));
-      el.style.transform = "translate(-50%,-50%) translate(" +
-        lx.toFixed(1) + "px," + (b.screen.y + off).toFixed(1) + "px)";
-    }
-    // 歌词
-    var cur = lyricAt(t);
-    var lineId = cur ? cur.line.id : -1;
-    if (lineId !== railLineId) { railLineId = lineId; buildRail(cur ? cur.line : null); }
-    var base = cur ? cur.line.start : 0;
-    for (var w = 0; w < railWords.length; w++) {
-      var el2 = railWords[w];
-      var on = cur && w < cur.shown;
-      if (on) el2.classList.add("on"); else el2.classList.remove("on");
-      // 入场：按 t 驱动，保证逐帧渲染可复现
-      var age = t - base - w * 0.028;
-      var k = age <= 0 ? 0 : Math.min(1, age / 0.26);
-      var e = 1 - Math.pow(1 - k, 3);
-      el2.style.transform = "translateY(" + ((1 - e) * 24).toFixed(1) + "px)";
-      el2.style.opacity = on ? "" : (0.35 * e).toFixed(3);
-    }
-    rail.style.opacity = cur ? "1" : "0";
-    // 计时
-    var s = Math.max(0, Math.min(SONG, t));
-    document.getElementById("tc").textContent = fmt(s);
-    document.getElementById("tc2").textContent = fmt(s) + " / " + fmt(SONG);
-    document.getElementById("prog").style.width = (SONG > 0 ? (s / SONG) * 100 : 0) + "%";
-  };
-
   var tl = gsap.timeline({ paused: true });
 
-  tl.from(".hud", { y: -36, opacity: 0, duration: .5, ease: "power3.out" }, .05);
-  tl.from("#deco1", { scale: 0, rotation: -70, opacity: 0, duration: .55, ease: "back.out(1.7)" }, .25);
-  tl.from(".footer", { y: 26, opacity: 0, duration: .45, ease: "power2.out" }, .35);
-
+  /* 驱动 3D + DOM（render 内部已完成所有逐帧更新） */
   tl.to(frameState, {
     t: SONG, duration: SONG, ease: "none",
     onUpdate: function () {
       var W = window.__hfThreeRender_nbs;
       if (W) { W.state.t = frameState.t; W.render(); }
-      else if (window.__nbsFrame) { window.__nbsFrame(frameState.t, []); }
     }
   }, INTRO);
 
   /* 歌词快闪：chorus 段落整屏打字 */
-  (D.flashes || []).forEach(function (f, fi) {
+  (D.flashes || []).forEach(function (f) {
     var el = document.createElement("div");
     el.className = "fw";
     el.textContent = f.text;
@@ -667,10 +583,6 @@ window.__nbsReady = true;
       { scale: 1, opacity: 1, y: 0, duration: .26, ease: "power4.out" }, INTRO + f.t);
     tl.to(el, { scale: 0.92, opacity: 0, duration: .3, ease: "power2.in" }, INTRO + f.t + f.d);
   });
-
-  /* 收尾（最后一段允许 exit） */
-  tl.to(".hud, .footer", { opacity: 0, duration: .5 }, INTRO + SONG + .1);
-  tl.to("#deco1", { scale: 1.3, opacity: 0, duration: .5 }, INTRO + SONG + .1);
 
   window.__timelines["nbs"] = tl;
 })();

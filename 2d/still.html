@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<style>
+  html,body{margin:0;padding:0;background:#0b0706;overflow:hidden}
+  #wrap{width:1920px;height:1080px;position:relative;background:
+     radial-gradient(120% 90% at 50% 42%, #4a2f26 0%, #2b1c18 38%, #150e0c 72%, #080505 100%);}
+  svg{position:absolute;inset:0;width:100%;height:100%}
+  .glow{filter:url(#bloom)}
+  .haze{filter:blur(3px)}
+  .near{filter:blur(7px)}
+  .vig{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 95% at 50% 45%, rgba(0,0,0,0) 42%, rgba(0,0,0,.55) 78%, rgba(0,0,0,.88) 100%)}
+  .grain{position:absolute;inset:0;opacity:.06;pointer-events:none;mix-blend-mode:overlay}
+  .title{position:absolute;left:118px;bottom:118px;color:#f4e9dd;font-family:"Smiley Sans","Noto Sans CJK SC",sans-serif}
+  .title .cn{font-size:74px;letter-spacing:.14em;font-weight:700;text-shadow:0 0 40px rgba(255,190,120,.35)}
+  .title .en{margin-top:14px;font-size:22px;letter-spacing:.34em;opacity:.5}
+  .mark{position:absolute;left:120px;top:96px;font-family:Fira Code,monospace;font-size:15px;letter-spacing:.3em;color:#c9a227;opacity:.65}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <filter id="bloom" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="26" result="b1"/>
+        <feGaussianBlur stdDeviation="7" result="b2"/>
+        <feMerge>
+          <feMergeNode in="b1"/><feMergeNode in="b1"/>
+          <feMergeNode in="b2"/><feMergeNode in="b2"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+      <pattern id="pixgrid" width="16" height="16" patternUnits="userSpaceOnUse">
+        <rect width="16" height="16" fill="none"/>
+        <path d="M0 8h16M8 0v16" stroke="rgba(0,0,0,.10)" stroke-width="1"/>
+      </pattern>
+      <linearGradient id="gGold" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#f6dfa0" stop-opacity="0"/>
+        <stop offset=".35" stop-color="#f0c869"/>
+        <stop offset=".7" stop-color="#c98f2e"/>
+        <stop offset="1" stop-color="#f6dfa0" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="gCyan" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#bdeff7" stop-opacity="0"/>
+        <stop offset=".4" stop-color="#79d8ea"/>
+        <stop offset=".75" stop-color="#3aa7bd"/>
+        <stop offset="1" stop-color="#bdeff7" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="gViolet" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#ded0ff" stop-opacity="0"/>
+        <stop offset=".4" stop-color="#b48cf2"/>
+        <stop offset=".75" stop-color="#7a4fc4"/>
+        <stop offset="1" stop-color="#ded0ff" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+
+    <g id="far"></g>
+    <g id="score"></g>
+    <g id="trails"></g>
+    <g id="particles"></g>
+    <g id="near"></g>
+  </svg>
+
+  <div class="vig"></div>
+  <div class="mark">NBS / MDL-02 / 2D</div>
+  <div class="title">
+    <div class="cn">植物大战僵尸</div>
+    <div class="en">NOTE BLOCK VISUALIZER</div>
+  </div>
+</div>
+<script>
+(function(){
+  const NS="http://www.w3.org/2000/svg";
+  const el=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;};
+  let seed=20261109;
+  const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
+
+  // ---------- 远景：低对比方块墙 ----------
+  const far=document.getElementById("far");
+  const FW=118, FH=52;               // 2:1 等距方块
+  for(let row=0;row<9;row++){
+    for(let col=0;col<16;col++){
+      if(rnd()<0.18) continue;
+      const cx=340+col*FW-rnd()*26;
+      const cy=430+row*FH*0.62-rnd()*10;
+      const h=38+Math.floor(rnd()*5)*10;
+      const w=FW*0.86, d=FH*0.86;
+      const g=el("g",{opacity:(0.30+rnd()*0.22).toFixed(2),"class":rnd()<.25?"haze":""});
+      const base=48+Math.floor(rnd()*4)*9;     // 暖棕阶
+      const c1=`rgb(${base+34},${base+18},${base+12})`;
+      const c2=`rgb(${base+16},${base+8},${base+6})`;
+      const c3=`rgb(${base+52},${base+30},${base+20})`;
+      // 顶面
+      g.appendChild(el("polygon",{points:`${cx},${cy-h} ${cx+w/2},${cy-h-d/4} ${cx+w},${cy-h} ${cx+w/2},${cy-h+d/4}`,fill:c3}));
+      // 左面
+      g.appendChild(el("polygon",{points:`${cx},${cy-h} ${cx+w/2},${cy-h+d/4} ${cx+w/2},${cy+d/4} ${cx},${cy}`,fill:c2}));
+      // 右面
+      g.appendChild(el("polygon",{points:`${cx+w},${cy-h} ${cx+w/2},${cy-h+d/4} ${cx+w/2},${cy+d/4} ${cx+w},${cy}`,fill:c1}));
+      // 像素网格暗示
+      g.appendChild(el("polygon",{points:`${cx+w},${cy-h} ${cx+w/2},${cy-h+d/4} ${cx+w/2},${cy+d/4} ${cx+w},${cy}`,fill:"url(#pixgrid)",opacity:.5}));
+      far.appendChild(g);
+    }
+  }
+
+  // ---------- 中景：地面谱面（透视收敛） ----------
+  const score=document.getElementById("score");
+  const vpx=1030, vpy=470;           // 消失点
+  const sysTop=612;
+  for(let s=0;s<4;s++){              // 4 组五线谱
+    const y0=sysTop+s*96;
+    for(let l=0;l<5;l++){
+      const y=y0+l*15;
+      const x1=140+ s*26, x2=1860;
+      score.appendChild(el("line",{x1,y1:y,x2:x2,y2:y+vpy*0+0,
+        stroke:"rgba(232,214,196,.20)","stroke-width":1.15}));
+    }
+  }
+  // 符头（16px 像素感）
+  const notePos=[[300,706],[420,684],[520,742],[640,700],[760,760],[880,722],[1010,690],
+                 [1140,748],[1270,712],[1400,770],[1520,734],[1640,700],[760,846],[980,880],
+                 [1200,858],[1440,886]];
+  for(const [x,y] of notePos){
+    const g=el("g",{opacity:.55+Math.random()*0.3});
+    g.appendChild(el("ellipse",{cx:x,cy:y,rx:11,ry:8,fill:"#efe1cf",transform:`rotate(-18 ${x} ${y})`}));
+    g.appendChild(el("rect",{x:x+9,y:y-46,width:2.4,height:46,fill:"#efe1cf"}));
+    score.appendChild(g);
+  }
+  // 力度 / 变音记号
+  const marks=[["mf",176,700],["p",176,880],["♯",1180,660],["♯",1330,930],["f",560,928]];
+  for(const [t,x,y] of marks){
+    const n=el("text",{x,y,fill:"#d9c7b2","font-size":34,"font-family":"Fira Code, monospace",opacity:.42});
+    n.textContent=t; score.appendChild(n);
+  }
+
+  // ---------- 发光拖尾 ----------
+  const trails=document.getElementById("trails");
+  const paths=[
+    ["M 180,760 C 460,600 700,640 900,700 S 1240,700 1420,626", "url(#gGold)", 1.0],
+    ["M 300,980 C 620,860 820,820 1080,812 S 1420,760 1580,700", "url(#gCyan)", .82],
+    ["M 620,540 C 820,470 960,520 1120,470 S 1360,430 1520,470", "url(#gViolet)", .62]
+  ];
+  for(const [d,grad,op] of paths){
+    trails.appendChild(el("path",{d,fill:"none",stroke:grad,"stroke-width":34,"stroke-linecap":"round",opacity:.30*op,"class":"glow"}));
+    trails.appendChild(el("path",{d,fill:"none",stroke:grad,"stroke-width":9,"stroke-linecap":"round",opacity:.85*op,"class":"glow"}));
+    trails.appendChild(el("path",{d,fill:"none",stroke:"#fff7e8","stroke-width":2.2,"stroke-linecap":"round",opacity:.9*op,"class":"glow"}));
+  }
+
+  // ---------- 粒子 ----------
+  const pg=document.getElementById("particles");
+  for(let i=0;i<46;i++){
+    const x=140+rnd()*1660, y=380+rnd()*640, r=1.2+rnd()*2.2;
+    const c=["#ffe9bd","#cfefff","#e6d4ff"][Math.floor(rnd()*3)];
+    pg.appendChild(el("circle",{cx:x,cy:y,r,fill:c,opacity:(0.25+rnd()*0.55).toFixed(2),"class":"glow"}));
+  }
+
+  // ---------- 近景：大块（虚焦） ----------
+  const near=document.getElementById("near");
+  const big=[[-60,980,300],[120,1050,220],[1720,960,330],[1560,1040,240],[860,1100,380]];
+  for(const [x,y,w] of big){
+    const h=w*0.32, d=w*0.20;
+    const g=el("g",{opacity:.9,"class":"near"});
+    g.appendChild(el("polygon",{points:`${x},${y-h} ${x+w/2},${y-h-d/2} ${x+w},${y-h} ${x+w/2},${y-h+d/2}`,fill:"#7c5342"}));
+    g.appendChild(el("polygon",{points:`${x},${y-h} ${x+w/2},${y-h+d/2} ${x+w/2},${y+d/2} ${x},${y}`,fill:"#3a231c"}));
+    g.appendChild(el("polygon",{points:`${x+w},${y-h} ${x+w/2},${y-h+d/2} ${x+w/2},${y+d/2} ${x+w},${y}`,fill:"#4c2f24"}));
+    near.appendChild(g);
+  }
+})();
+</script>
+</body>
+</html>
